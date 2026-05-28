@@ -1,0 +1,14 @@
+# environment variables — never commit this
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Django
+db.sqlite3
+
+# OS
+.DS_Store

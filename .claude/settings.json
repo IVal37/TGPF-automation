@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip show *)",
+      "Bash(mysql --version)",
+      "Bash(sudo service mysql status)",
+      "Bash(sudo service mysql start)",
+      "Bash(service mysql *)",
+      "Bash(mkdir -p /var/run/mysqld)",
+      "Bash(chown mysql:mysql /var/run/mysqld)",
+      "Bash(sudo mkdir -p /var/run/mysqld)",
+      "Bash(sudo chown mysql:mysql /var/run/mysqld)",
+      "Bash(python manage.py check)",
+      "Bash(/home/izaak/TGPFflows/.venv/bin/python /home/izaak/TGPFflows/manage.py check)",
+      "Bash(.venv/bin/python manage.py showmigrations)",
+      "Bash(.venv/bin/python manage.py check)",
+      "Bash(.venv/bin/python -c ' *)",
+      "Bash(.venv/bin/python manage.py makemigrations --check)",
+      "Bash(.venv/bin/python manage.py makemigrations orders)"
+    ]
+  }
+}
