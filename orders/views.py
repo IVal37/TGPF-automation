@@ -5,14 +5,44 @@ from decimal import Decimal
 
 # imports from django
 from django.http import JsonResponse
+from django.shortcuts import redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 # imports from project
-from orders.models import Order
-from orders.services.engine import add_order, complete_order
+from orders.models import Driver, Order
+from orders.services.engine import add_driver, add_order, complete_order, delete_driver
 from orders.services.dispatch import extract_msg_info, get_dispatch_msg
 from orders.services.scrapers.talkroute import send_message
+
+def order_list(request):
+    orders = Order.objects.filter(completed=False).prefetch_related('items').order_by('-order_date')
+    drivers = Driver.objects.order_by('pk')
+    return render(request, 'orders/order_list.html', {'orders': orders, 'drivers': drivers})
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def add_dummy_driver(request):
+    count = Driver.objects.count()
+    driver = Driver.objects.create(name=f"Driver {count + 1}")
+    add_driver(driver.pk)
+    return redirect("/")
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def delete_driver_view(request):
+    driver_id = request.POST.get("driver_id")
+    if driver_id:
+        delete_driver(int(driver_id))
+    return redirect("/")
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def complete_order_manual(request):
+    order_id = request.POST.get("order_id")
+    if order_id:
+        complete_order(order_id=order_id)
+    return redirect("/")
 
 @csrf_exempt
 @require_http_methods(["POST"])

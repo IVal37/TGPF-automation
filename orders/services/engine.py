@@ -23,7 +23,7 @@ def add_order(
 ) -> None:
     if not active_drivers:
         raise ValueError("No active drivers available")
-    assigned_driver: Driver = active_drivers[0]
+    assigned_driver: Driver = min(active_drivers, key=lambda d: d.get_id())
 
     order = Order(
         order_id=order_id,
@@ -55,14 +55,13 @@ def add_order(
 
 # complete order and remove from associated data structures
 def complete_order(order_id: str) -> None:
-    driver_id: int = driver_id_by_order_id[order_id]
+    Order.objects.filter(order_id=order_id).update(completed=True, driver=None)
 
-    drivers_by_id[driver_id].set_current_city(orders_by_id[order_id].get_city())
-
-    orders_by_id.pop(order_id)
-    driver_id_by_order_id.pop(order_id)
-
-    drivers_by_id[driver_id].complete_order(order_id)
+    if order_id in driver_id_by_order_id:
+        driver_id: int = driver_id_by_order_id.pop(order_id)
+        order = orders_by_id.pop(order_id)
+        if driver_id in drivers_by_id:
+            drivers_by_id[driver_id].set_current_city(order.get_city())
 
 # load a driver from the DB into the active pool
 def add_driver(driver_id: int) -> None:
@@ -81,6 +80,15 @@ def remove_driver(driver_id: int) -> None:
         if d.get_id() == driver_id:
             active_drivers.pop(idx)
             break
+
+# permanently delete a driver from memory and the DB
+def delete_driver(driver_id: int) -> None:
+    drivers_by_id.pop(driver_id, None)
+    for idx, d in enumerate(active_drivers):
+        if d.get_id() == driver_id:
+            active_drivers.pop(idx)
+            break
+    Driver.objects.filter(pk=driver_id).delete()
 
 # return a dictionary of driver id -> list of driver orders
 def get_driver_city_queues(driver_id: int) -> DefaultDict[str, List[int]]:

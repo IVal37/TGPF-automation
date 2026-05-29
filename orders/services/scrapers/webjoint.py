@@ -1,6 +1,9 @@
 # imports from std lib
+import logging
 import os
 import time
+
+logger = logging.getLogger(__name__)
 
 # imports from selenium
 from selenium import webdriver
@@ -16,7 +19,6 @@ def fill_order_notes(order_notes: str):
     prefs = {"profile.default_content_setting_values.notifications": BLOCK}
     opts = Options()
     opts.add_experimental_option("prefs", prefs)
-    #opts.add_argument("--headless=new")
     opts.add_argument("--window-size=1280,720")
 
     driver = webdriver.Chrome(options=opts)
@@ -36,20 +38,21 @@ def fill_order_notes(order_notes: str):
 
             login_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "c230.c204.c206.c209.c15")))
             login_button.click()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("fill_order_notes: login failed: %s", e)
+            return
 
         try:
             orders_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a")))
             orders_button.click()
-            
+
             newest_order = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span')))
             newest_order.click()
 
             order_notes_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "c215")))
             order_notes_button.click()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("fill_order_notes: navigation/notes step failed: %s", e)
 
         time.sleep(5)
 
@@ -82,8 +85,9 @@ def set_webhooks(base_url: str) -> None:
 
             login_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "c230.c204.c206.c209.c15")))
             login_button.click()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("set_webhooks: login failed: %s", e)
+            return
 
         try:
             settings_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="nav_drawer"]/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[9]')))
@@ -94,22 +98,24 @@ def set_webhooks(base_url: str) -> None:
 
             order_settings_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div/div[6]/div[1]')))
             order_settings_button.click()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error("set_webhooks: navigation to order settings failed: %s", e)
+            return
 
         try:
             order_submit_hook_input = wait.until(EC.element_to_be_clickable((By.ID, "hooks.orderSubmit")))
             order_submit_hook_input.clear()
             order_submit_hook_input.send_keys(new_order_url)
-            
+
             order_complete_hook_input = wait.until(EC.element_to_be_clickable((By.ID, "hooks.orderComplete")))
             order_complete_hook_input.clear()
             order_complete_hook_input.send_keys(complete_order_url)
 
             save_changes_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div/div[16]/div[1]/button')))
             save_changes_button.click()
-        except Exception:
-            pass
+            logger.info("set_webhooks: saved — new_order=%s complete_order=%s", new_order_url, complete_order_url)
+        except Exception as e:
+            logger.error("set_webhooks: failed to set or save webhook URLs: %s", e)
 
         time.sleep(5)
 

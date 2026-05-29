@@ -17,7 +17,6 @@ BLOCK = 2
 
 def send_merchant_pay_link():
     opts = Options()
-    #opts.add_argument("--headless=new")
     opts.add_argument("--window-size=1280,720")
 
     driver = webdriver.Chrome(options=opts)

@@ -18,7 +18,6 @@ def send_message(customer_number: str, dispatch_msg: str):
     }
     opts = Options()
     opts.add_experimental_option("prefs", prefs)
-    #opts.add_argument("--headless=new")
     opts.add_argument("--window-size=1280,720")
 
     driver = webdriver.Chrome(options=opts)
@@ -62,6 +61,7 @@ def send_message(customer_number: str, dispatch_msg: str):
             pass
 
         # change number to working one
+        '''
         try:
             settings_button = wait.until(EC.element_to_be_clickable((By.ID, "show-preferences-button")))
             settings_button.click()
@@ -69,10 +69,9 @@ def send_message(customer_number: str, dispatch_msg: str):
             call_dropdown = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "MuiInputBase-root")))
             call_dropdown.click()
 
-            talkroute_phone = os.environ.get('TALKROUTE_PHONE', '')
             call_num = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, f"li.MuiButtonBase-root.MuiListItem-root.MuiMenuItem-root.MuiMenuItem-gutters.MuiListItem-gutters.MuiListItem-button[data-value='{talkroute_phone}']")))
             call_num.click()
-
+            
             text_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="mui-component-select-OUTGOING_TEXT_PHONE_NUMBER_SELECTED"]')))
             text_dropdown.click()
 
@@ -81,14 +80,14 @@ def send_message(customer_number: str, dispatch_msg: str):
 
             close_settings_button = wait.until(EC.element_to_be_clickable((By.ID, "close-preferences-button")))
             close_settings_button.click()
-
-            messages_button = wait.until(EC.element_to_be_clickable((By.ID, "navigation-messages-item")))
-            messages_button.click()
         except Exception:
             pass
-
+        '''
         # send message
         try:
+            messages_button = wait.until(EC.element_to_be_clickable((By.ID, "navigation-messages-item")))
+            messages_button.click()
+
             new_message_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/div[2]/div/div[1]/div/div[1]/div/div[1]/button')))
             new_message_btn.click()
 
@@ -99,13 +98,11 @@ def send_message(customer_number: str, dispatch_msg: str):
             message_input = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "message-input.text-message-input")))
             message_input.clear()
             message_input.send_keys(dispatch_msg)
-
+            
             send_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "message-input-send")))
             send_button.click()
         except Exception:
             pass       
-
-        time.sleep(5)
 
     finally:
         driver.quit()

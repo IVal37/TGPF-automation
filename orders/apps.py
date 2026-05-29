@@ -24,10 +24,14 @@ class OrdersConfig(AppConfig):
 
     def _load_active_drivers(self):
         try:
-            from orders.models import Driver
-            from orders.services.state import active_drivers, drivers_by_id
+            from orders.models import Driver, Order
+            from orders.services.state import active_drivers, drivers_by_id, orders_by_id, driver_id_by_order_id
             for driver in Driver.objects.filter(is_active=True):
                 active_drivers.append(driver)
                 drivers_by_id[driver.get_id()] = driver
-        except Exception:
-            pass
+            for order in Order.objects.filter(completed=False, driver__isnull=False).select_related('driver'):
+                orders_by_id[order.order_id] = order
+                driver_id_by_order_id[order.order_id] = order.driver_id
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("Failed to load state from DB on startup: %s", e)

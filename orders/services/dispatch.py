@@ -1,4 +1,5 @@
 # imports from std lib
+from random import choice
 from decimal import Decimal
 from datetime import datetime
 from typing import List
@@ -6,7 +7,7 @@ from typing import List
 # imports from project
 from orders.services.money import round_money
 from orders.services.eta import get_eta
-from orders.constants import CITY_MINS, MERCHANT_PAY_CUSTOMERS
+from orders.constants import CITY_MINS, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS
 from orders.services.scrapers.weedmaps import get_wm_payment_type
 from orders.services.state import driver_id_by_order_id, drivers_by_id
 
@@ -97,10 +98,13 @@ def normal_dispatch_msg(dict):
     merch_pay_fee_text = "including Merchant Pay fee " if merch_pay_used_bool else ""
     merch_pay_used_text = "I will send over your merchant pay link in a moment. " if merch_pay_used_bool else ""
 
+    rand_valediction = choice(VALEDICTIONS)
+
     dispatch_msg = (
         f'Hi {dict["name"]}, thank you for your order from TGPF. You saved ${dict["discount"]} with discounts ' +
         f'and your total {card_fee_text}{merch_pay_fee_text}is ${rounded_total}. {merch_pay_used_text}Your driver ' +
-        f'{in_area_text} and you will get an auto update when he is directly en route to you and when he arrives. Thanks!'
+        f'{in_area_text} and you will get an auto update when he is directly en route to you and when he arrives. ' +
+        f'{rand_valediction}'
     )
 
     return dispatch_msg
