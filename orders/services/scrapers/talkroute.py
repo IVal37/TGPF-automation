@@ -101,6 +101,8 @@ def send_message(customer_number: str, dispatch_msg: str):
             
             send_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "message-input-send")))
             send_button.click()
+            
+            time.sleep(5)
         except Exception:
             pass       
 

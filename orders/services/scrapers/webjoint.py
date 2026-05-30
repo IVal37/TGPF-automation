@@ -49,13 +49,18 @@ def fill_order_notes(order_notes: str):
             newest_order = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span')))
             newest_order.click()
 
-            order_notes_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "c215")))
-            order_notes_button.click()
+            time.sleep(5)
+
+            #order_notes_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/div/div[1]/div[2]/div/div/div/div/div/div/div[4]/div/div[2]/div/div/div/div/div[1]/span/p/button')))
+            #order_notes_button.click()
+
+            elements = driver.find_elements(By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/div/div[1]/div[2]/div/div/div/div/div/div/div[4]/div/div[2]/div/div/div/div/div[1]/span/p/button')
+            print(f"Found {len(elements)} elements")
+
+            time.sleep(5)
+
         except Exception as e:
             logger.error("fill_order_notes: navigation/notes step failed: %s", e)
-
-        time.sleep(5)
-
     finally:
         driver.quit()
 
