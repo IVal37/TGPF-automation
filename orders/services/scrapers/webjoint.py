@@ -49,16 +49,21 @@ def fill_order_notes(order_notes: str):
             newest_order = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span')))
             newest_order.click()
 
-            time.sleep(5)
+            # button is a child of the <p> containing "Order Notes" text
+            order_notes_button = wait.until(EC.element_to_be_clickable(
+                (By.XPATH, '//p[contains(translate(text(),"ABCDEFGHIJKLMNOPQRSTUVWXYZ","abcdefghijklmnopqrstuvwxyz"),"order notes")]/button')
+            ))
+            order_notes_button.click()
 
-            #order_notes_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/div/div[1]/div[2]/div/div/div/div/div/div/div[4]/div/div[2]/div/div/div/div/div[1]/span/p/button')))
-            #order_notes_button.click()
+            order_notes_input = wait.until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]')))
+            order_notes_input.clear()
+            order_notes_input.send_keys(order_notes)
 
-            elements = driver.find_elements(By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/div/div[1]/div[2]/div/div/div/div/div/div/div[4]/div/div[2]/div/div/div/div/div[1]/span/p/button')
-            print(f"Found {len(elements)} elements")
+            save_notes_button = wait.until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[4]/div[2]/div[2]/form/div[2]/button')))
+            save_notes_button.click()
 
-            time.sleep(5)
-
+            time.sleep(2)
+            
         except Exception as e:
             logger.error("fill_order_notes: navigation/notes step failed: %s", e)
     finally:

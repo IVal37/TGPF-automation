@@ -78,6 +78,10 @@ TRAVEL_TIME: DefaultDict[Tuple[str, str], int] = symmetrize(defaultdict(
 def get_travel_time(city_a: str, city_b: str) -> int:
     return TRAVEL_TIME.get((city_a, city_b), _DEFAULT_TRAVEL_TIME)
 
+BLOCKED_ADDRESSES = {
+    ("526 3rd Street", "95618"),
+}
+
 VALEDICTIONS = [
                     'Thanks again for your order!', 
                     'We appreciate your business!', 
