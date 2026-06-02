@@ -6,7 +6,7 @@ from typing import List, DefaultDict
 
 # imports from project
 from orders.models import Order, OrderItem, Driver
-from orders.services.state import orders_by_id, driver_id_by_order_id, drivers_by_id, active_drivers
+from orders.services.state import orders_by_id, driver_id_by_order_id, drivers_by_id, active_drivers, completed_orders
 
 # add order and add to associated data structures
 def add_order(
@@ -55,6 +55,27 @@ def add_order(
 
 # complete order and remove from associated data structures
 def complete_order(order_id: str) -> None:
+    if order_id in orders_by_id:
+        order = orders_by_id[order_id]
+        completed_orders.append({
+            "order_id": order_id,
+            "customer_name": order.customer_name,
+            "items": [
+                {"product_name": item.product_name, "quantity": item.quantity, "price": str(item.price)}
+                for item in order.items.all()
+            ],
+        })
+
+    Order.objects.filter(order_id=order_id).update(completed=True, driver=None)
+
+    if order_id in driver_id_by_order_id:
+        driver_id: int = driver_id_by_order_id.pop(order_id)
+        order = orders_by_id.pop(order_id)
+        if driver_id in drivers_by_id:
+            drivers_by_id[driver_id].set_current_city(order.get_city())
+
+# cancel order and remove from associated data structures (no restock capture)
+def cancel_order(order_id: str) -> None:
     Order.objects.filter(order_id=order_id).update(completed=True, driver=None)
 
     if order_id in driver_id_by_order_id:

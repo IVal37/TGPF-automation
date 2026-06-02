@@ -10,18 +10,21 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 # imports from project
+from django.conf import settings
 from orders.models import Driver, Order
-from orders.services.engine import add_driver, add_order, complete_order, delete_driver
+from orders.services.engine import add_driver, add_order, cancel_order, complete_order, delete_driver
 from orders.services.dispatch import extract_msg_info, get_dispatch_msg
 from orders.services.scrapers.talkroute import send_message
 from orders.services.note import get_order_notes
 from orders.services.scrapers.webjoint import fill_order_notes
 from orders.constants import BLOCKED_ADDRESSES
+from orders.services.state import completed_orders, restock_items
 
 def order_list(request):
-    orders = Order.objects.filter(completed=False).prefetch_related('items').order_by('-order_date')
-    drivers = Driver.objects.order_by('pk')
-    return render(request, 'orders/order_list.html', {'orders': orders, 'drivers': drivers})
+    return render(request, 'orders/order_list.html', {
+        'completed_orders': completed_orders,
+        'restock_items': restock_items,
+    })
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -69,9 +72,10 @@ def new_order(request):
     shipping = data.get("shipping", {})
     full_street = f"{shipping.get('number', '').strip()} {shipping.get('street', '').strip()}".strip()
     delivery_key = (full_street, shipping.get("zip", "").strip())
-    if delivery_key not in BLOCKED_ADDRESSES:
-        send_message(msg_dict["phone"], dispatch_msg)
-    fill_order_notes(get_order_notes(msg_dict))
+    if not settings.TEST_MODE:
+        if delivery_key not in BLOCKED_ADDRESSES:
+            send_message(msg_dict["phone"], dispatch_msg)
+        fill_order_notes(get_order_notes(msg_dict))
     return JsonResponse({"status": "ok"})
 
 @csrf_exempt
@@ -80,3 +84,33 @@ def complete_order_view(request):
     data = json.loads(request.body)
     complete_order(order_id=data["id"])
     return JsonResponse({"status": "ok"})
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def cancel_order_view(request):
+    data = json.loads(request.body)
+    cancel_order(order_id=data["id"])
+    return JsonResponse({"status": "ok"})
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def reconcile_restock(request):
+    selected_ids = set(request.POST.getlist("order_ids"))
+    to_remove = []
+    for entry in completed_orders:
+        if entry["order_id"] in selected_ids:
+            for item in entry["items"]:
+                name = item["product_name"]
+                if name in restock_items:
+                    restock_items[name]["quantity"] += item["quantity"]
+                else:
+                    restock_items[name] = {"quantity": item["quantity"], "price": item["price"]}
+            to_remove.append(entry["order_id"])
+    completed_orders[:] = [e for e in completed_orders if e["order_id"] not in to_remove]
+    return redirect("/")
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def clear_restock(request):
+    restock_items.clear()
+    return redirect("/")

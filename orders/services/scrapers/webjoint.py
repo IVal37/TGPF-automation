@@ -72,6 +72,7 @@ def fill_order_notes(order_notes: str):
 def set_webhooks(base_url: str) -> None:
     new_order_url = base_url + "/new_order"
     complete_order_url = base_url + "/complete_order"
+    cancel_order_url = base_url + "/cancel_order"
 
     prefs = {"profile.default_content_setting_values.notifications": BLOCK}
     opts = Options()
@@ -120,6 +121,10 @@ def set_webhooks(base_url: str) -> None:
             order_complete_hook_input = wait.until(EC.element_to_be_clickable((By.ID, "hooks.orderComplete")))
             order_complete_hook_input.clear()
             order_complete_hook_input.send_keys(complete_order_url)
+
+            order_cancel_hook_input = wait.until(EC.element_to_be_clickable((By.ID, "hooks.orderCancel")))
+            order_cancel_hook_input.clear()
+            order_cancel_hook_input.send_keys(cancel_order_url)
 
             save_changes_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div/div[16]/div[1]/button')))
             save_changes_button.click()
