@@ -2,6 +2,9 @@
 import os
 import time
 
+# imports from django
+from django.conf import settings
+
 # imports from project
 from orders.services.scrapers.merchant_pay_helper import FetchCode as GetCode
 
@@ -18,6 +21,8 @@ BLOCK = 2
 def send_merchant_pay_link():
     opts = Options()
     opts.add_argument("--window-size=1280,720")
+    if not settings.TEST_MODE:
+        opts.add_argument("--headless=new")
 
     driver = webdriver.Chrome(options=opts)
     wait = WebDriverWait(driver, 15)

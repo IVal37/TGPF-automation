@@ -5,6 +5,9 @@ import time
 
 logger = logging.getLogger(__name__)
 
+# imports from django
+from django.conf import settings
+
 # imports from selenium
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -20,6 +23,8 @@ def fill_order_notes(order_notes: str):
     opts = Options()
     opts.add_experimental_option("prefs", prefs)
     opts.add_argument("--window-size=1280,720")
+    if not settings.TEST_MODE:
+        opts.add_argument("--headless=new")
 
     driver = webdriver.Chrome(options=opts)
     wait = WebDriverWait(driver, 15)
@@ -78,6 +83,8 @@ def set_webhooks(base_url: str) -> None:
     opts = Options()
     opts.add_experimental_option("prefs", prefs)
     opts.add_argument("--window-size=1280,720")
+    if not settings.TEST_MODE:
+        opts.add_argument("--headless=new")
 
     driver = webdriver.Chrome(options=opts)
     wait = WebDriverWait(driver, 15)
