@@ -3,6 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from collections import defaultdict
 from typing import List, DefaultDict
+import uuid
 
 # imports from project
 from orders.models import Order, OrderItem, Driver
@@ -73,6 +74,24 @@ def complete_order(order_id: str) -> None:
         order = orders_by_id.pop(order_id)
         if driver_id in drivers_by_id:
             drivers_by_id[driver_id].set_current_city(order.get_city())
+
+# add a shell order (city only) so driver location updates when it's completed
+def add_shell_order(city: str) -> None:
+    if not active_drivers:
+        raise ValueError("No active drivers available")
+    assigned_driver: Driver = min(active_drivers, key=lambda d: d.get_id())
+
+    order_id = f"shell_{uuid.uuid4().hex}"
+    order = Order(
+        order_id=order_id,
+        city=city,
+        order_date=datetime.now(),
+    )
+    order.save()
+    assigned_driver.add_order(order)
+
+    orders_by_id[order_id] = order
+    driver_id_by_order_id[order_id] = assigned_driver.get_id()
 
 # cancel order and remove from associated data structures (no restock capture)
 def cancel_order(order_id: str) -> None:

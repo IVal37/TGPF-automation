@@ -102,11 +102,85 @@
     }
 
     .btn-clear:hover { border-color: #c0392b; color: #c0392b; }
+
+    .startup-grid {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      max-width: 700px;
+      margin-top: 0.5rem;
+    }
+
+    .startup-form {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .startup-form select {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.9rem;
+      background: #fff;
+    }
+
+    .btn-action {
+      background: #417505;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 0.4rem 1rem;
+      font-size: 0.9rem;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn-action:hover { background: #345f04; }
   </style>
 </head>
 <body>
 
   <h1>TGPF Restock</h1>
+
+  <p class="section-title">Startup</p>
+  <div class="startup-grid">
+
+    <div>
+      <div style="font-size:0.85rem; color:#555; margin-bottom:0.4rem;">Add existing order (city only)</div>
+      <form method="post" action="/add_shell_order" class="startup-form">
+        {% csrf_token %}
+        <select name="city">
+          {% for city in cities %}
+            <option value="{{ city }}">{{ city }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn-action" type="submit">Add Order</button>
+      </form>
+    </div>
+
+    {% if active_drivers %}
+    <div>
+      <div style="font-size:0.85rem; color:#555; margin-bottom:0.4rem;">Set driver location</div>
+      <form method="post" action="/set_driver_location" class="startup-form">
+        {% csrf_token %}
+        <select name="driver_id">
+          {% for driver in active_drivers %}
+            <option value="{{ driver.pk }}">{{ driver.name }}</option>
+          {% endfor %}
+        </select>
+        <select name="city">
+          {% for city in cities %}
+            <option value="{{ city }}">{{ city }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn-action" type="submit">Set Location</button>
+      </form>
+    </div>
+    {% endif %}
+
+  </div>
 
   <p class="section-title">Completed Orders</p>
 

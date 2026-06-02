@@ -12,18 +12,20 @@ from django.views.decorators.http import require_http_methods
 # imports from project
 from django.conf import settings
 from orders.models import Driver, Order
-from orders.services.engine import add_driver, add_order, cancel_order, complete_order, delete_driver
 from orders.services.dispatch import extract_msg_info, get_dispatch_msg
 from orders.services.scrapers.talkroute import send_message
 from orders.services.note import get_order_notes
 from orders.services.scrapers.webjoint import fill_order_notes
-from orders.constants import BLOCKED_ADDRESSES
-from orders.services.state import completed_orders, restock_items
+from orders.constants import BLOCKED_ADDRESSES, CITY_MINS
+from orders.services.engine import add_driver, add_order, add_shell_order, cancel_order, complete_order, delete_driver
+from orders.services.state import active_drivers, completed_orders, drivers_by_id, restock_items
 
 def order_list(request):
     return render(request, 'orders/order_list.html', {
         'completed_orders': completed_orders,
         'restock_items': restock_items,
+        'active_drivers': active_drivers,
+        'cities': sorted(CITY_MINS.keys()),
     })
 
 @csrf_exempt
@@ -113,4 +115,21 @@ def reconcile_restock(request):
 @require_http_methods(["POST"])
 def clear_restock(request):
     restock_items.clear()
+    return redirect("/")
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def add_shell_order_view(request):
+    city = request.POST.get("city")
+    if city:
+        add_shell_order(city)
+    return redirect("/")
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def set_driver_location_view(request):
+    driver_id = request.POST.get("driver_id")
+    city = request.POST.get("city")
+    if driver_id and city:
+        drivers_by_id[int(driver_id)].set_current_city(city)
     return redirect("/")

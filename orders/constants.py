@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import DefaultDict, Tuple
 
 _DEFAULT_TRAVEL_TIME = 30
-_SAME_CITY_TRAVEL_TIME = 5
+_SAME_CITY_TRAVEL_TIME = 15
 _DELIVERY_TIME = 5
 _BUFFER_TIME = 10
 
@@ -76,6 +76,8 @@ TRAVEL_TIME: DefaultDict[Tuple[str, str], int] = symmetrize(defaultdict(
 ))
 
 def get_travel_time(city_a: str, city_b: str) -> int:
+    if city_a == city_b:
+        return _SAME_CITY_TRAVEL_TIME
     return TRAVEL_TIME.get((city_a, city_b), _DEFAULT_TRAVEL_TIME)
 
 BLOCKED_ADDRESSES = {
