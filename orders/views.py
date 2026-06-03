@@ -78,7 +78,7 @@ def new_order(request):
     Order.objects.filter(order_id=msg_dict["id"]).update(payment_type=msg_dict["pay_type"])
     if not settings.TEST_MODE:
         send_message(msg_dict["phone"], dispatch_msg)
-        fill_order_notes(get_order_notes(msg_dict))
+    fill_order_notes(get_order_notes(msg_dict))
     return JsonResponse({"status": "ok"})
 
 @csrf_exempt
