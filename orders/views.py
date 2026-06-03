@@ -56,6 +56,11 @@ def complete_order_manual(request):
 @require_http_methods(["POST"])
 def new_order(request):
     data = json.loads(request.body)
+    shipping = data.get("shipping", {})
+    full_street = f"{shipping.get('number', '').strip()} {shipping.get('street', '').strip()}".strip()
+    delivery_key = (full_street, shipping.get("zip", "").strip())
+    if delivery_key in BLOCKED_ADDRESSES:
+        return JsonResponse({"status": "ok"})
     add_order(
         order_city=data["shipping"]["city"],
         order_id=str(data["id"]),
@@ -71,12 +76,8 @@ def new_order(request):
     msg_dict = extract_msg_info(data)
     dispatch_msg = get_dispatch_msg(msg_dict)
     Order.objects.filter(order_id=msg_dict["id"]).update(payment_type=msg_dict["pay_type"])
-    shipping = data.get("shipping", {})
-    full_street = f"{shipping.get('number', '').strip()} {shipping.get('street', '').strip()}".strip()
-    delivery_key = (full_street, shipping.get("zip", "").strip())
     if not settings.TEST_MODE:
-        if delivery_key not in BLOCKED_ADDRESSES:
-            send_message(msg_dict["phone"], dispatch_msg)
+        send_message(msg_dict["phone"], dispatch_msg)
         fill_order_notes(get_order_notes(msg_dict))
     return JsonResponse({"status": "ok"})
 

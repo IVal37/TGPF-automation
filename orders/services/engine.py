@@ -5,6 +5,9 @@ from collections import defaultdict
 from typing import List, DefaultDict
 import uuid
 
+# imports from django
+from django.utils import timezone
+
 # imports from project
 from orders.models import Order, OrderItem, Driver
 from orders.services.state import orders_by_id, driver_id_by_order_id, drivers_by_id, active_drivers, completed_orders
@@ -85,7 +88,7 @@ def add_shell_order(city: str) -> None:
     order = Order(
         order_id=order_id,
         city=city,
-        order_date=datetime.now(),
+        order_date=timezone.now(),
     )
     order.save()
     assigned_driver.add_order(order)
