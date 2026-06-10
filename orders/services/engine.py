@@ -72,8 +72,19 @@ def complete_order(order_id: str) -> None:
     if order_id in driver_id_by_order_id:
         driver_id: int = driver_id_by_order_id.pop(order_id)
         order = orders_by_id.pop(order_id)
+        city = order.get_city()
         if driver_id in drivers_by_id:
-            drivers_by_id[driver_id].set_current_city(order.get_city())
+            drivers_by_id[driver_id].set_current_city(city)
+
+        shell_id = next(
+            (oid for oid, did in driver_id_by_order_id.items()
+             if did == driver_id and oid.startswith("shell_") and orders_by_id[oid].get_city() == city),
+            None
+        )
+        if shell_id:
+            driver_id_by_order_id.pop(shell_id)
+            orders_by_id.pop(shell_id)
+            Order.objects.filter(order_id=shell_id).update(completed=True, driver=None)
 
 # add a shell order (city only) so driver location updates when it's completed
 def add_shell_order(city: str) -> None:

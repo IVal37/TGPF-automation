@@ -37,8 +37,9 @@ def get_eta(order_id: str):
     # clamp: minimum 30 mins out, maximum 2 hours out from order creation
     clamped_eta = max(order_created_time + timedelta(minutes=30), min(raw_eta, order_created_time + timedelta(hours=2)))
 
-    # window: 90 mins if more than 5 active orders, otherwise 60 mins
-    window_mins: int = 90 if len(orders_by_id) > 5 else 60
+    # window: 90 mins if more than 5 real (non-shell) active orders, otherwise 60 mins
+    real_order_count = sum(1 for oid in orders_by_id if not oid.startswith("shell_"))
+    window_mins: int = 90 if real_order_count > 5 else 60
 
     # slide the anchor from window-start (1st order) toward window-middle (later orders)
     # so later customers see a tighter, more accurate window rather than a padded one
