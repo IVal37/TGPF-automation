@@ -55,7 +55,7 @@ def add_order(
     driver_id_by_order_id[order_id] = assigned_driver.get_id()
 
 # complete order and remove from associated data structures
-def complete_order(order_id: str) -> None:
+def complete_order(order_id: str, city: str = "") -> None:
     if order_id in orders_by_id:
         order = orders_by_id[order_id]
         completed_orders.append({
@@ -85,6 +85,20 @@ def complete_order(order_id: str) -> None:
             driver_id_by_order_id.pop(shell_id)
             orders_by_id.pop(shell_id)
             Order.objects.filter(order_id=shell_id).update(completed=True, driver=None)
+
+    elif city:
+        # order wasn't tracked (placed before server started) — pop matching shell
+        shell_id = next(
+            (oid for oid in list(orders_by_id)
+             if oid.startswith("shell_") and orders_by_id[oid].get_city() == city),
+            None
+        )
+        if shell_id:
+            driver_id = driver_id_by_order_id.pop(shell_id)
+            orders_by_id.pop(shell_id)
+            Order.objects.filter(order_id=shell_id).update(completed=True, driver=None)
+            if driver_id in drivers_by_id:
+                drivers_by_id[driver_id].set_current_city(city)
 
 # add a shell order (city only) so driver location updates when it's completed
 def add_shell_order(city: str) -> None:

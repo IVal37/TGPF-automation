@@ -88,7 +88,7 @@ def new_order(request):
 @require_http_methods(["POST"])
 def complete_order_view(request):
     data = json.loads(request.body)
-    complete_order(order_id=data["id"])
+    complete_order(order_id=str(data["id"]), city=data.get("shipping", {}).get("city", ""))
     return JsonResponse({"status": "ok"})
 
 @csrf_exempt
