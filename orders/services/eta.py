@@ -2,17 +2,12 @@
 from datetime import datetime, timedelta
 from typing import List, DefaultDict
 
-# imports from third party
-import pytz
-
 # imports from project
 from orders.models import Order
 from orders.services.state import orders_by_id, driver_id_by_order_id, drivers_by_id
 from orders.services.engine import get_driver_city_queues
 from orders.services.time import round_time, format_time
 from orders.constants import _DELIVERY_TIME, get_travel_time
-
-_PACIFIC = pytz.timezone('America/Los_Angeles')
 
 # returns two times creating an eta window of when the order will arrive
 def get_eta(order_id: str):
@@ -49,7 +44,7 @@ def get_eta(order_id: str):
 
     order.set_etas(start_timestamp, end_timestamp)
 
-    return format_time(start_timestamp.astimezone(_PACIFIC)), format_time(end_timestamp.astimezone(_PACIFIC))
+    return format_time(start_timestamp), format_time(end_timestamp)
 
 def get_eta_minutes(start_city: str, order_ids_list: List[str], search_id: str) -> int:
     minutes: int = 0

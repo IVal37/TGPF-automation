@@ -15,7 +15,7 @@ from orders.models import Driver, Order
 from orders.services.dispatch import extract_msg_info, get_dispatch_msg
 from orders.services.scrapers.talkroute import send_message
 from orders.services.note import get_order_notes
-from orders.services.scrapers.webjoint import fill_order_notes
+from orders.services.scrapers.webjoint import dispatch_to_driver, fill_order_notes, pull_from_chiles
 from orders.constants import BLOCKED_ADDRESSES, CITY_MINS
 from orders.services.engine import add_driver, add_order, add_shell_order, cancel_order, complete_order, delete_driver
 from orders.services.state import active_drivers, completed_orders, drivers_by_id, restock_items
@@ -79,6 +79,9 @@ def new_order(request):
     if not settings.TEST_MODE:
         send_message(msg_dict["phone"], dispatch_msg)
     fill_order_notes(get_order_notes(msg_dict))
+    pull_from_chiles()
+    if data.get("status") == "Pending":
+        dispatch_to_driver()
     return JsonResponse({"status": "ok"})
 
 @csrf_exempt

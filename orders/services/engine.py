@@ -5,9 +5,6 @@ from collections import defaultdict
 from typing import List, DefaultDict
 import uuid
 
-# imports from django
-from django.utils import timezone
-
 # imports from project
 from orders.models import Order, OrderItem, Driver
 from orders.services.state import orders_by_id, driver_id_by_order_id, drivers_by_id, active_drivers, completed_orders
@@ -88,7 +85,7 @@ def add_shell_order(city: str) -> None:
     order = Order(
         order_id=order_id,
         city=city,
-        order_date=timezone.now(),
+        order_date=datetime.now(),
     )
     order.save()
     assigned_driver.add_order(order)
@@ -134,12 +131,9 @@ def delete_driver(driver_id: int) -> None:
     Driver.objects.filter(pk=driver_id).delete()
 
 # return a dictionary of driver id -> list of driver orders
-def get_driver_city_queues(driver_id: int) -> DefaultDict[str, List[int]]:
-    order_list: List[int] = [order.get_id() for order in drivers_by_id[driver_id].get_active_orders()]
-
-    orders_by_city: DefaultDict[str, List[int]] = defaultdict(list)
-    for order_id in order_list:
-        order: Order = orders_by_id[order_id]
-        orders_by_city[order.get_city()].append(order_id)
-
+def get_driver_city_queues(driver_id: int) -> DefaultDict[str, List[str]]:
+    orders_by_city: DefaultDict[str, List[str]] = defaultdict(list)
+    for order_id, did in driver_id_by_order_id.items():
+        if did == driver_id:
+            orders_by_city[orders_by_id[order_id].get_city()].append(order_id)
     return orders_by_city
