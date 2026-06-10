@@ -65,7 +65,7 @@ def new_order(request):
         order_city=data["shipping"]["city"],
         order_id=str(data["id"]),
         customer_name=data["customer"]["name"],
-        order_time=datetime.fromisoformat(data["created"].replace("Z", "+00:00")),
+        order_time=datetime.fromisoformat(data["created"].replace("Z", "+00:00")).replace(tzinfo=None),
         customer_phone=data["customer"]["phone"][1:],
         source=data.get("source", ""),
         discount=Decimal(str(data.get("discount", "0"))),
