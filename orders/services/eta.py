@@ -34,12 +34,18 @@ def get_eta(order_id: str):
     minutes_to_order = get_eta_minutes(driver_location, orders_in_order, order_id)
     raw_eta: datetime = order_created_time + timedelta(minutes=minutes_to_order)
 
-    # clamp: minimum 30 mins out, maximum 2 hours out from order creation, then round up to nearest 15 mins
+    # clamp: minimum 30 mins out, maximum 2 hours out from order creation
     clamped_eta = max(order_created_time + timedelta(minutes=30), min(raw_eta, order_created_time + timedelta(hours=2)))
-    start_timestamp = round_time(clamped_eta)
 
     # window: 90 mins if more than 5 active orders, otherwise 60 mins
     window_mins: int = 90 if len(orders_by_id) > 5 else 60
+
+    # slide the anchor from window-start (1st order) toward window-middle (later orders)
+    # so later customers see a tighter, more accurate window rather than a padded one
+    total = len(orders_in_order)
+    position = orders_in_order.index(order_id) if order_id in orders_in_order else 0
+    anchor_fraction = 0.0 if total <= 1 else min(0.5, position / (total - 1) * 0.5)
+    start_timestamp = round_time(clamped_eta - timedelta(minutes=window_mins * anchor_fraction))
     end_timestamp = start_timestamp + timedelta(minutes=window_mins)
 
     order.set_etas(start_timestamp, end_timestamp)
