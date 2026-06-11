@@ -68,15 +68,6 @@ def get_wm_payment_type():
         except Exception:
             pass
 
-        try:
-            finish_btn = short_wait.until(EC.element_to_be_clickable(
-                (By.XPATH, '//button[contains(., "Finish preparing")]')
-            ))
-            finish_btn.click()
-            time.sleep(1)
-        except Exception:
-            pass
-
         # get payment type
         try:
             payment_type_field = wait.until(EC.presence_of_element_located((By.XPATH , '//*[@id="__next"]/div/div[2]/div/div[3]/div[3]/div[1]/div[1]/div/div/div[4]/div[1]/p[1]')))
