@@ -196,15 +196,51 @@ def pull_from_chiles():
                         ))
                         save_btn.click()
                     else:
-                        cancel_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="CANCEL"]')))
+                        cancel_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Cancel"]')))
                         cancel_btn.click()
+
+                        try:
+                            inventory_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Inventory"]')))
+                            inventory_button.click()
+
+                            kits_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Kits"]')))
+                            kits_button.click()
+
+                            if starting_opts:
+                                closing_kit_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Closing Shift Mobile Inventory"]')))
+                                closing_kit_button.click()
+
+                            if closing_opts:
+                                starting_kit_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Starting Shift Mobile Inventory"]')))
+                                starting_kit_button.click()
+
+                            time.sleep(1)
+
+                            search_kit_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/div/div/div/input')))
+                            search_kit_input.clear()
+                            search_kit_input.send_keys("Ace OG | 1g Preroll")
+
+                            time.sleep(1)
+
+                            remove_item_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button')))
+                            remove_item_button.click()
+
+                            time.sleep(1)
+
+                            return_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//button[.//span[text()="Return"]]')))
+                            return_button.click()
+
+                            time.sleep(1)
+
+                        except Exception as e:
+                            logger.error("pull_from_chiles: failed to return from other kit: %s", e)
 
                     time.sleep(1)
 
                 except Exception as e:
                     logger.error("pull_from_chiles: row %d failed: %s", idx, e)
                     try:
-                        driver.find_element(By.XPATH, '//*[text()="CANCEL"]').click()
+                        driver.find_element(By.XPATH, '//*[text()="Cancel"]').click()
                     except Exception:
                         pass
 
@@ -212,7 +248,6 @@ def pull_from_chiles():
             logger.error("pull_from_chiles: row loop failed: %s", e)
     finally:
         driver.quit()
-
 
 def dispatch_to_driver():
     driver, wait = _create_driver()

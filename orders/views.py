@@ -17,6 +17,7 @@ from orders.services.scrapers.talkroute import send_message
 from orders.services.note import get_order_notes
 from orders.services.scrapers.webjoint import dispatch_to_driver, fill_order_notes, pull_from_chiles
 from orders.constants import BLOCKED_ADDRESSES, CITY_MINS
+from orders.services.hours import closing_dt, is_past_closing
 from orders.services.engine import add_driver, add_order, add_shell_order, cancel_order, complete_order, delete_driver
 from orders.services.state import active_drivers, completed_orders, drivers_by_id, restock_items
 
@@ -76,12 +77,29 @@ def new_order(request):
     msg_dict = extract_msg_info(data)
     dispatch_msg = get_dispatch_msg(msg_dict)
     Order.objects.filter(order_id=msg_dict["id"]).update(payment_type=msg_dict["pay_type"])
-    if not settings.TEST_MODE:
-        send_message(msg_dict["phone"], dispatch_msg)
-    fill_order_notes(get_order_notes(msg_dict))
-    pull_from_chiles()
-    if data.get("status") == "Pending":
-        dispatch_to_driver()
+    order_obj = orders_by_id.get(msg_dict["id"])
+    eta_past_closing = (
+        order_obj and order_obj.eta_start and is_past_closing(order_obj.eta_start)
+    )
+    if eta_past_closing:
+        close_time = closing_dt(order_obj.eta_start)
+        close_str = f"{close_time.hour % 12 or 12}pm"
+        late_msg = (
+            f'Hi {msg_dict["name"]}, thank you for your order from TGPF. '
+            f'Unfortunately our driver will not be able to make it out to you by '
+            f'{close_str} tonight. I can cancel your order or reschedule it for first '
+            f'thing in the morning, let me know what works. Thanks!'
+        )
+        if not settings.TEST_MODE:
+            send_message(msg_dict["phone"], late_msg)
+        fill_order_notes("reached out about rescheduling for tomorrow morning")
+    else:
+        if not settings.TEST_MODE:
+            send_message(msg_dict["phone"], dispatch_msg)
+        fill_order_notes(get_order_notes(msg_dict))
+        pull_from_chiles()
+        if data.get("status") == "Pending":
+            dispatch_to_driver()
     return JsonResponse({"status": "ok"})
 
 @csrf_exempt

@@ -7,6 +7,7 @@ from orders.models import Order
 from orders.services.state import orders_by_id, driver_id_by_order_id, drivers_by_id
 from orders.services.engine import get_driver_city_queues
 from orders.services.time import round_time, format_time
+from orders.services.hours import clamp_to_opening
 from orders.constants import _DELIVERY_TIME, get_travel_time
 
 # returns two times creating an eta window of when the order will arrive
@@ -46,7 +47,7 @@ def get_eta(order_id: str):
     total = len(orders_in_order)
     position = orders_in_order.index(order_id) if order_id in orders_in_order else 0
     anchor_fraction = 0.0 if total <= 1 else min(0.5, position / (total - 1) * 0.5)
-    start_timestamp = round_time(clamped_eta - timedelta(minutes=window_mins * anchor_fraction))
+    start_timestamp = clamp_to_opening(round_time(clamped_eta - timedelta(minutes=window_mins * anchor_fraction)))
     end_timestamp = start_timestamp + timedelta(minutes=window_mins)
 
     order.set_etas(start_timestamp, end_timestamp)
