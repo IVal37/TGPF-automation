@@ -26,7 +26,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
-TEST_MODE = os.environ.get("TEST_MODE", "false").lower() == "true"
+HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
+RESTOCK_TEST_MODE = os.environ.get("RESTOCK_TEST_MODE", "false").lower() == "true"
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True

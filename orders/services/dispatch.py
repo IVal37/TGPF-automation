@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import List
 
 # imports from project
+from django.conf import settings
 from orders.services.money import round_money
 from orders.services.eta import get_eta
 from orders.constants import CITY_MINS, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS
@@ -76,7 +77,7 @@ def CalculateForMinCheck(dict):
 def normal_dispatch_msg(dict):
     payment_type = (
         dict["pay_type"]
-        if (dict["source"]) in ("POS", "Website")
+        if (dict["source"]) in ("POS", "Website") or settings.RESTOCK_TEST_MODE
         else get_wm_payment_type()
     )
     order_total = get_adjusted_total(dict["total"], payment_type)

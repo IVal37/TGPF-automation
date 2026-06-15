@@ -19,7 +19,7 @@ from orders.services.scrapers.webjoint import dispatch_to_driver, fill_order_not
 from orders.constants import BLOCKED_ADDRESSES, CITY_MINS
 from orders.services.hours import closing_dt, is_past_closing
 from orders.services.engine import add_driver, add_order, add_shell_order, cancel_order, complete_order, delete_driver
-from orders.services.state import active_drivers, completed_orders, drivers_by_id, restock_items
+from orders.services.state import active_drivers, completed_orders, drivers_by_id, orders_by_id, restock_items
 
 def order_list(request):
     return render(request, 'orders/order_list.html', {
@@ -66,7 +66,7 @@ def new_order(request):
         order_city=data["shipping"]["city"],
         order_id=str(data["id"]),
         customer_name=data["customer"]["name"],
-        order_time=datetime.fromisoformat(data["created"].replace("Z", "+00:00")).replace(tzinfo=None),
+        order_time=datetime.fromisoformat(data["created"].replace("Z", "+00:00")).astimezone().replace(tzinfo=None),
         customer_phone=data["customer"]["phone"][1:],
         source=data.get("source", ""),
         discount=Decimal(str(data.get("discount", "0"))),
@@ -90,16 +90,16 @@ def new_order(request):
             f'{close_str} tonight. I can cancel your order or reschedule it for first '
             f'thing in the morning, let me know what works. Thanks!'
         )
-        if not settings.TEST_MODE:
+        if not settings.RESTOCK_TEST_MODE:
             send_message(msg_dict["phone"], late_msg)
-        fill_order_notes("reached out about rescheduling for tomorrow morning")
+            fill_order_notes("reached out about rescheduling for tomorrow morning")
     else:
-        if not settings.TEST_MODE:
+        if not settings.RESTOCK_TEST_MODE:
             send_message(msg_dict["phone"], dispatch_msg)
-        fill_order_notes(get_order_notes(msg_dict))
-        pull_from_chiles()
-        if data.get("status") == "Pending":
-            dispatch_to_driver()
+            fill_order_notes(get_order_notes(msg_dict))
+            pull_from_chiles()
+            if data.get("status") == "Pending":
+                dispatch_to_driver()
     return JsonResponse({"status": "ok"})
 
 @csrf_exempt

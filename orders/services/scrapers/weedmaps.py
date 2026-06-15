@@ -16,7 +16,7 @@ from selenium.webdriver.chrome.options import Options
 def get_wm_payment_type():
     opts = Options()
     opts.add_argument("--window-size=1280,720")
-    if not settings.TEST_MODE:
+    if settings.HEADLESS:
         opts.add_argument("--headless=new")
 
     driver = webdriver.Chrome(options=opts)
