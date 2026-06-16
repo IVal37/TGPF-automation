@@ -24,7 +24,7 @@ def extract_msg_info(full_dict):
         "city": full_dict["shipping"]["city"],
 
         "name": full_dict["customer"]["name"].split()[0].capitalize(),
-        "last_name": full_dict["customer"]["name"].split()[1].capitalize(),
+        "last_name": (full_dict["customer"]["name"].split()[1].capitalize() if len(full_dict["customer"]["name"].split()) > 1 else ""),
 
         "phone": full_dict["customer"]["phone"][1:],
 
