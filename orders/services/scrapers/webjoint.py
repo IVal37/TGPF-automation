@@ -103,6 +103,7 @@ def pull_from_chiles():
         time.sleep(1)
 
         try:
+            kit_removals = []
             # iterate by index so pass-cases don't re-visit the same row (would cause infinite loop)
             row_count = len(driver.find_elements(By.XPATH, '//tbody/tr'))
             for idx in range(row_count):
@@ -142,22 +143,23 @@ def pull_from_chiles():
                     except Exception:
                         remove_btns = []
 
-                    if len(remove_btns) >= 2:
+                    if is_split:
                         chiles_idx = None
                         shift_idx = None
-                        for i in range(len(remove_btns)):
-                            try:
-                                qty_el = driver.find_element(By.ID, f"packagequantities[{i}].nfrompackagequantity")
-                                row_text = driver.execute_script(
-                                    "var e=arguments[0]; while(e && !e.querySelector('.c420')) e=e.parentElement; return e ? e.innerText : '';",
-                                    qty_el
-                                )
-                                if "Chiles Rd" in row_text:
-                                    chiles_idx = i
-                                elif "Closing Shift" in row_text or "Starting Shift" in row_text:
-                                    shift_idx = i
-                            except Exception:
-                                pass
+                        if len(remove_btns) >= 2:
+                            for i in range(len(remove_btns)):
+                                try:
+                                    qty_el = driver.find_element(By.ID, f"packagequantities[{i}].nfrompackagequantity")
+                                    row_text = driver.execute_script(
+                                        "var e=arguments[0]; while(e && !e.querySelector('.c420')) e=e.parentElement; return e ? e.innerText : '';",
+                                        qty_el
+                                    )
+                                    if "Chiles Rd" in row_text:
+                                        chiles_idx = i
+                                    elif "Closing Shift" in row_text or "Starting Shift" in row_text:
+                                        shift_idx = i
+                                except Exception:
+                                    pass
                         if chiles_idx is not None and shift_idx is not None:
                             shift_input = driver.find_element(By.ID, f"packagequantities[{shift_idx}].nfrompackagequantity")
                             shift_qty = int(shift_input.get_attribute("value") or "1")
@@ -171,7 +173,12 @@ def pull_from_chiles():
                             split_save_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//button[contains(.,"Save Changes")]')))
                             split_save_btn.click()
                             time.sleep(1)
-                            continue
+                        else:
+                            try:
+                                driver.find_element(By.XPATH, '//*[text()="Cancel"]').click()
+                            except Exception:
+                                pass
+                        continue
 
                     # css- classes from emotion are stable (hashed from styles, not random)
                     package_select_control = wait.until(EC.element_to_be_clickable(
@@ -196,44 +203,13 @@ def pull_from_chiles():
                         ))
                         save_btn.click()
                     else:
+                        item_name = row.text.split("\n")[0].strip()
+                        if starting_opts:
+                            kit_removals.append((item_name, "Closing Shift Mobile Inventory"))
+                        elif closing_opts:
+                            kit_removals.append((item_name, "Starting Shift Mobile Inventory"))
                         cancel_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Cancel"]')))
                         cancel_btn.click()
-
-                        try:
-                            inventory_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Inventory"]')))
-                            inventory_button.click()
-
-                            kits_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Kits"]')))
-                            kits_button.click()
-
-                            if starting_opts:
-                                closing_kit_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Closing Shift Mobile Inventory"]')))
-                                closing_kit_button.click()
-
-                            if closing_opts:
-                                starting_kit_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Starting Shift Mobile Inventory"]')))
-                                starting_kit_button.click()
-
-                            time.sleep(1)
-
-                            search_kit_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/div/div/div/input')))
-                            search_kit_input.clear()
-                            search_kit_input.send_keys("Ace OG | 1g Preroll")
-
-                            time.sleep(1)
-
-                            remove_item_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button')))
-                            remove_item_button.click()
-
-                            time.sleep(1)
-
-                            return_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//button[.//span[text()="Return"]]')))
-                            return_button.click()
-
-                            time.sleep(1)
-
-                        except Exception as e:
-                            logger.error("pull_from_chiles: failed to return from other kit: %s", e)
 
                     time.sleep(1)
 
@@ -243,6 +219,29 @@ def pull_from_chiles():
                         driver.find_element(By.XPATH, '//*[text()="Cancel"]').click()
                     except Exception:
                         pass
+
+            if kit_removals:
+                try:
+                    inventory_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Inventory"]')))
+                    inventory_button.click()
+                    kits_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Kits"]')))
+                    kits_button.click()
+                    for product_name, kit_name in kit_removals:
+                        try:
+                            kit_button = wait.until(EC.element_to_be_clickable((By.XPATH, f'//*[text()="{kit_name}"]')))
+                            kit_button.click()
+                            time.sleep(1)
+                            search_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/div/div/div/input')))
+                            search_input.clear()
+                            search_input.send_keys(product_name)
+                            time.sleep(1)
+                            remove_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button')))
+                            remove_btn.click()
+                            time.sleep(1)
+                        except Exception as e:
+                            logger.error("pull_from_chiles: kit removal failed for %s from %s: %s", product_name, kit_name, e)
+                except Exception as e:
+                    logger.error("pull_from_chiles: kit removal navigation failed: %s", e)
 
         except Exception as e:
             logger.error("pull_from_chiles: row loop failed: %s", e)
