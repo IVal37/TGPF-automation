@@ -22,7 +22,7 @@ def send_message(customer_number: str, dispatch_msg: str):
     opts = Options()
     opts.add_experimental_option("prefs", prefs)
     opts.add_argument("--window-size=1280,720")
-    if not settings.TEST_MODE:
+    if settings.HEADLESS:
         opts.add_argument("--headless=new")
 
     driver = webdriver.Chrome(options=opts)
@@ -118,6 +118,11 @@ def send_testing_message():
     send_message(os.environ.get('TALKROUTE_TEST_PHONE', ''), "testing")
 
 if __name__ == "__main__":
+    import sys
+    import django
     from dotenv import load_dotenv
     load_dotenv()
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "TGPFflows.settings")
+    django.setup()
     send_testing_message()

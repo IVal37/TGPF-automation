@@ -14,6 +14,7 @@ from django.conf import settings
 from orders.models import Driver, Order
 from orders.services.dispatch import extract_msg_info, get_dispatch_msg
 from orders.services.scrapers.talkroute import send_message
+from orders.services.scrapers.weedmaps import get_wm_payment_type
 from orders.services.note import get_order_notes
 from orders.services.scrapers.webjoint import dispatch_to_driver, fill_order_notes, pull_from_chiles
 from orders.constants import BLOCKED_ADDRESSES, CITY_MINS
@@ -75,6 +76,8 @@ def new_order(request):
         items=data.get("details", []),
     )
     msg_dict = extract_msg_info(data)
+    if msg_dict["source"] not in ("POS", "Website") and not settings.RESTOCK_TEST_MODE:
+        msg_dict["pay_type"] = get_wm_payment_type()
     dispatch_msg = get_dispatch_msg(msg_dict)
     Order.objects.filter(order_id=msg_dict["id"]).update(payment_type=msg_dict["pay_type"])
     order_obj = orders_by_id.get(msg_dict["id"])

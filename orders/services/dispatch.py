@@ -5,11 +5,9 @@ from datetime import datetime
 from typing import List
 
 # imports from project
-from django.conf import settings
 from orders.services.money import round_money
 from orders.services.eta import get_eta
 from orders.constants import CITY_MINS, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS
-from orders.services.scrapers.weedmaps import get_wm_payment_type
 from orders.services.state import driver_id_by_order_id, drivers_by_id
 
 # gets relevant items from full JSON dict
@@ -28,7 +26,7 @@ def extract_msg_info(full_dict):
 
         "phone": full_dict["customer"]["phone"][1:],
 
-        "pay_type": full_dict["payments"][0]["paymentMethod"]["label"],        
+        "pay_type": ((full_dict.get("payments") or [{}])[0].get("paymentMethod") or {}).get("label", ""),
         "discount": round_money(Decimal(str(full_dict["discount"]))),
         "sub_total": Decimal(str(full_dict["subtotal"])),
         "total": round_money(Decimal(str(full_dict["total"]))),
@@ -75,11 +73,7 @@ def CalculateForMinCheck(dict):
 # @returns:
 #   dispatch_msg - message to send customer with all necessary info
 def normal_dispatch_msg(dict):
-    payment_type = (
-        dict["pay_type"]
-        if (dict["source"]) in ("POS", "Website") or settings.RESTOCK_TEST_MODE
-        else get_wm_payment_type()
-    )
+    payment_type = dict["pay_type"]
     order_total = get_adjusted_total(dict["total"], payment_type)
     rounded_total = round_money(order_total)
     
