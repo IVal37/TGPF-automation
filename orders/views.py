@@ -61,7 +61,11 @@ def new_order(request):
     shipping = data.get("shipping", {})
     full_street = f"{shipping.get('number', '').strip()} {shipping.get('street', '').strip()}".strip()
     delivery_key = (full_street, shipping.get("zip", "").strip())
-    if delivery_key in BLOCKED_ADDRESSES:
+    street_lower = shipping.get('street', '').strip().lower()
+    if (delivery_key in BLOCKED_ADDRESSES
+            or (shipping.get('number', '').strip() == '526'
+                and shipping.get('city', '').strip() == 'Davis'
+                and any(w in street_lower for w in ('third', '3rd')))):
         return JsonResponse({"status": "ok"})
     add_order(
         order_city=data["shipping"]["city"],
