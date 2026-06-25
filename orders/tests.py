@@ -191,44 +191,29 @@ class TestUnderMinMsg(SimpleTestCase):
 # ── normal_dispatch_msg ───────────────────────────────────────────────────────
 
 class TestNormalDispatchMsg(SimpleTestCase):
-    def _state(self, driver_city):
-        driver = MagicMock()
-        driver.get_current_city.return_value = driver_city
-        return (
-            patch("orders.services.dispatch.driver_id_by_order_id", {"6767008": 1}),
-            patch("orders.services.dispatch.drivers_by_id", {1: driver}),
-        )
+    def _eta(self):
+        return patch("orders.services.dispatch.get_eta", return_value=("2:30", "3:30"))
 
-    def test_in_area_cash_message(self):
-        p1, p2 = self._state("Davis")
-        with p1, p2:
+    def test_shows_eta_window(self):
+        with self._eta():
             msg = normal_dispatch_msg(_msg())
-        self.assertIn("is in the area", msg)
+        self.assertIn("between 2:30-3:30", msg)
         self.assertIn("$77.25", msg)
         self.assertNotIn("card fee", msg)
 
     def test_no_double_space_in_driver_sentence(self):
-        p1, p2 = self._state("Davis")
-        with p1, p2:
+        with self._eta():
             msg = normal_dispatch_msg(_msg())
         self.assertNotIn("  ", msg)
 
-    def test_not_in_area_shows_eta_window(self):
-        p1, p2 = self._state("Woodland")
-        with p1, p2, patch("orders.services.dispatch.get_eta", return_value=("2:30", "3:30")):
-            msg = normal_dispatch_msg(_msg())
-        self.assertIn("between 2:30-3:30", msg)
-
     def test_debit_card_shows_fee_text_and_adjusted_total(self):
-        p1, p2 = self._state("Davis")
-        with p1, p2:
+        with self._eta():
             msg = normal_dispatch_msg(_msg(pay_type="Debit / Tap-to-pay"))
         self.assertIn("including card fee", msg)
         self.assertIn("$79.57", msg)  # 77.25 * 1.03 = 79.5675 → rounds to 79.57
 
     def test_merchant_pay_customer_gets_link_notice_and_fee_text(self):
-        p1, p2 = self._state("Davis")
-        with p1, p2:
+        with self._eta():
             msg = normal_dispatch_msg(_msg(
                 name="Imran", last_name="Rahim", pay_type="Merchant Pay - ACH"
             ))
@@ -236,15 +221,13 @@ class TestNormalDispatchMsg(SimpleTestCase):
         self.assertIn("including Merchant Pay fee", msg)
 
     def test_non_merchant_pay_customer_has_no_link_notice(self):
-        p1, p2 = self._state("Davis")
-        with p1, p2:
+        with self._eta():
             msg = normal_dispatch_msg(_msg())
         self.assertNotIn("merchant pay link", msg)
 
     @patch("orders.services.dispatch.get_wm_payment_type", return_value="Cash")
     def test_external_source_scrapes_payment_type(self, mock_scraper):
-        p1, p2 = self._state("Davis")
-        with p1, p2:
+        with self._eta():
             normal_dispatch_msg(_msg(source="External"))
         mock_scraper.assert_called_once()
 

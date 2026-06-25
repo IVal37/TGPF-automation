@@ -7,8 +7,9 @@ from typing import List
 # imports from project
 from orders.services.money import round_money
 from orders.services.eta import get_eta
+from orders.services.time import format_time
+from orders.services.state import orders_by_id
 from orders.constants import CITY_MINS, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS
-from orders.services.state import driver_id_by_order_id, drivers_by_id
 
 # gets relevant items from full JSON dict
 # @params:
@@ -33,6 +34,12 @@ def extract_msg_info(full_dict):
 
         "source": full_dict["source"],
     }
+
+    cart = full_dict.get("cart", {})
+    delivery_timing = cart.get("deliveryTiming", "")
+    ret_dict["delivery_timing"] = delivery_timing
+    ret_dict["scheduled_start"] = cart.get("scheduledStart") if delivery_timing == "Scheduled" else None
+    ret_dict["scheduled_end"] = cart.get("scheduledEnd") if delivery_timing == "Scheduled" else None
 
     return ret_dict
 
@@ -77,15 +84,18 @@ def normal_dispatch_msg(dict):
     order_total = get_adjusted_total(dict["total"], payment_type)
     rounded_total = round_money(order_total)
     
-    driver_id = driver_id_by_order_id[dict["id"]]
-    driver = drivers_by_id[driver_id]
+    early_eta, late_eta = get_eta(dict["id"])
 
-    in_area_bool = (dict["city"] == driver.get_current_city())
-    if in_area_bool:
-        in_area_text = "is in the area"
-    else:
-        early_eta, late_eta = get_eta(dict["id"])
-        in_area_text = f"will be in the area between {early_eta}-{late_eta}"
+    if dict.get("delivery_timing") == "Scheduled" and dict.get("scheduled_end"):
+        sched_end_dt = datetime.fromisoformat(dict["scheduled_end"].replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
+        order = orders_by_id[dict["id"]]
+        if order.eta_end <= sched_end_dt:
+            sched_start_dt = datetime.fromisoformat(dict["scheduled_start"].replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
+            order.set_etas(sched_start_dt, sched_end_dt)
+            early_eta = format_time(sched_start_dt)
+            late_eta = format_time(sched_end_dt)
+
+    in_area_text = f"will be in the area between {early_eta}-{late_eta}"
 
     card_fee_text = "" if payment_type in ("Cash", "Merchant Pay - ACH") else "including card fee "
 
