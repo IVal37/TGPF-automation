@@ -12,7 +12,7 @@ from django.views.decorators.http import require_http_methods
 # imports from project
 from django.conf import settings
 from orders.models import Driver, Order
-from orders.services.dispatch import extract_msg_info, get_dispatch_msg
+from orders.services.dispatch import extract_msg_info, get_dispatch_msg, is_under_min
 from orders.services.scrapers.talkroute import send_message
 from orders.services.scrapers.weedmaps import get_wm_payment_type
 from orders.services.note import get_order_notes
@@ -88,6 +88,7 @@ def new_order(request):
     eta_past_closing = (
         order_obj and order_obj.eta_start and is_past_closing(order_obj.eta_start)
     )
+    no_text = data["customer"]["name"].strip().lower() == "mohsen awara"
     if eta_past_closing:
         close_time = closing_dt(order_obj.eta_start)
         close_str = f"{close_time.hour % 12 or 12}pm"
@@ -97,13 +98,15 @@ def new_order(request):
             f'{close_str} tonight. I can cancel your order or reschedule it for first '
             f'thing in the morning, let me know what works. Thanks!'
         )
-        if not settings.RESTOCK_TEST_MODE:
+        if not settings.RESTOCK_TEST_MODE and not no_text:
             send_message(msg_dict["phone"], late_msg)
             fill_order_notes("reached out about rescheduling for tomorrow morning")
     else:
         if not settings.RESTOCK_TEST_MODE:
-            send_message(msg_dict["phone"], dispatch_msg)
-            fill_order_notes(get_order_notes(msg_dict))
+            if not no_text:
+                send_message(msg_dict["phone"], dispatch_msg)
+            order_notes = "reached out about under min" if is_under_min(msg_dict) else get_order_notes(msg_dict)
+            fill_order_notes(order_notes)
             pull_from_chiles()
             if data.get("status") == "Pending":
                 dispatch_to_driver()

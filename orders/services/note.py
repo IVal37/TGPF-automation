@@ -20,6 +20,9 @@ def get_order_notes(dict):
         first_line = f"TTP: ${debit_total}"
 
     order = orders_by_id[dict["id"]]
-    eta_line = f"ETA: {format_time(order.eta_start)}-{format_time(order.eta_end)}"
+    if order.eta_start and order.eta_end:
+        eta_line = f"ETA: {format_time(order.eta_start)}-{format_time(order.eta_end)}"
+    else:
+        eta_line = "ETA: TBD"
 
     return first_line + "\n" + eta_line

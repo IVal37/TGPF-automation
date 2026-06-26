@@ -58,8 +58,12 @@ def get_dispatch_msg(dict):
         ret_msg = normal_dispatch_msg(dict)
     else:
         ret_msg = under_min_msg(dict, city_min, calculated_min_for_order)
-    
+
     return ret_msg
+
+def is_under_min(dict):
+    city_min = CITY_MINS.get(dict["city"], Decimal("0.00"))
+    return CalculateForMinCheck(dict) <= city_min
 
 # calculate total used for minimum check
 # @params:
