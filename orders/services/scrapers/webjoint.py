@@ -235,7 +235,10 @@ def pull_from_chiles():
                             search_input.clear()
                             search_input.send_keys(product_name)
                             time.sleep(1)
-                            remove_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button')))
+                            try:
+                                remove_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button')))
+                            except Exception:
+                                continue
                             remove_btn.click()
                             time.sleep(1)
                         except Exception as e:
