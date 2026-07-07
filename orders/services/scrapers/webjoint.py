@@ -1,7 +1,9 @@
 # imports from std lib
 import logging
 import os
+import re
 import time
+from typing import Dict, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -286,6 +288,208 @@ def dispatch_to_driver():
         driver.quit()
 
 
+def _fill_autocomplete(driver, wait, input_el, value: str):
+    """Type into a MUI Autocomplete field and select the matching dropdown option.
+
+    Picks the option whose text exactly matches `value`; if none exists, picks
+    the 'Create "value"' option MUI shows for a not-yet-existing entry. Falls
+    back to Enter only if neither renders (e.g. a plain freeSolo field).
+    """
+    input_el.clear()
+    input_el.send_keys(value)
+    time.sleep(0.5)  # let the option list render/filter
+
+    try:
+        options = wait.until(EC.presence_of_all_elements_located((By.XPATH, '//*[@role="option"]')))
+    except Exception:
+        options = []
+
+    exact = next((o for o in options if o.text.strip() == value), None)
+    if exact:
+        exact.click()
+        return
+
+    create_opt = next((o for o in options if o.text.strip() == f'Create "{value}"'), None)
+    if create_opt:
+        create_opt.click()
+        return
+
+    input_el.send_keys(Keys.ENTER)
+
+
+_CANNABINOID_UNIT_MAP = {"%": "Percentage", "mg": "Mg", "ml": "Ml", "g": "Gram"}
+
+
+def _parse_cannabinoid_value(value: str) -> Tuple[str, str]:
+    """Split a cannabinoid value like '34.5%' or '100mg' into (amount, unit_option).
+
+    unit_option is the exact dropdown label to select: Percentage, Gram, Mg, or Ml.
+    """
+    match = re.match(r'^\s*([\d.]+)\s*(%|mg|ml|g)\s*$', str(value), re.IGNORECASE)
+    if not match:
+        raise ValueError(f"unrecognized cannabinoid value: {value!r}")
+    amount, unit = match.groups()
+    return amount, _CANNABINOID_UNIT_MAP[unit.lower()]
+
+
+def create_product(product_dict: Dict[str, str]):
+    driver, wait = _create_driver()
+    try:
+        try:
+            _login(driver, wait)
+        except Exception as e:
+            logger.error("create_product: login failed: %s", e)
+            return
+
+        try:
+            inventory_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Inventory"]')))
+            inventory_button.click()
+
+            products_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Products"]')))
+            products_button.click()
+
+            time.sleep(1)
+        except Exception as e:
+            logger.error("create_product: navigation failed: %s", e)
+            return
+        
+        try:
+            add_product_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Add a New Product"]')))
+            add_product_button.click()
+            time.sleep(0.5)
+
+            name_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="name"]')))
+            name_input.clear()
+            name_input.send_keys(product_dict["product_name"])
+            time.sleep(0.5)
+
+            brand_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="brand"]//input')))
+            _fill_autocomplete(driver, wait, brand_input, product_dict["brand"])
+            time.sleep(0.5)
+
+            product_type_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="product_type"]//input')))
+            _fill_autocomplete(driver, wait, product_type_input, product_dict["product_type"])
+            time.sleep(0.5)
+
+            lineage_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="lineage"]/div/div[1]/div[2]')))
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", lineage_dropdown)
+            lineage_dropdown.click()
+            time.sleep(0.5)
+            lineage_option = wait.until(EC.element_to_be_clickable((By.XPATH, f'//*[@role="option" and text()="{product_dict["lineage"]}"]')))
+            lineage_option.click()
+            time.sleep(0.5)
+
+            strain_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="strain"]//input')))
+            _fill_autocomplete(driver, wait, strain_input, product_dict["strain"])
+            time.sleep(0.5)
+
+            category_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="category"]//input')))
+            _fill_autocomplete(driver, wait, category_input, product_dict["category"])
+            time.sleep(0.5)
+
+            subcategory_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="subcategory"]//input')))
+            _fill_autocomplete(driver, wait, subcategory_input, product_dict["subcategory"])
+            time.sleep(0.5)
+
+            if product_dict.get("for_sale", "") == "No":
+                not_for_sale_label = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="forSale"]//label[2]')))
+                not_for_sale_label.click()
+                time.sleep(0.5)
+
+            discount_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="salepricediscount"]')))
+            discount_input.clear()
+            discount_input.send_keys(product_dict["sale_discount"])
+            time.sleep(0.5)
+
+            seo_title_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="seoTitle"]')))
+            seo_title_input.clear()
+            seo_title_input.send_keys(product_dict["seo_title"])
+            time.sleep(0.5)
+
+            description_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[1]/div/div[2]/div[8]/div/div/div/div[3]/div[1]')))
+            description_input.clear()
+            description_input.send_keys(product_dict["description"])
+            time.sleep(0.5)
+
+            seo_description_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="seo_description"]')))
+            seo_description_input.clear()
+            seo_description_input.send_keys(product_dict["description"])
+            time.sleep(0.5)
+
+            pricing_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[1]/div/div/div/a[2]/span[1]/span/span')))
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", pricing_button)
+            time.sleep(0.3)
+            pricing_button.click()
+            time.sleep(0.5)
+
+            add_price_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[2]/div/div/ul/li/span/button/span[1]')))
+            add_price_button.click()
+            time.sleep(0.5)
+
+            weight_size_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="variants[0].unitweight"]')))
+            weight_size_input.clear()
+            weight_size_input.send_keys(product_dict["weight_size"])
+            time.sleep(0.5)
+
+            unit_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="unit"]/div/div[1]/div[2]')))
+            unit_dropdown.click()
+            unit_option = wait.until(EC.element_to_be_clickable((By.XPATH, f'//*[@role="option" and text()="{product_dict["unit"]}"]')))
+            unit_option.click()
+            time.sleep(0.5)
+
+            price_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="variants[0].price"]')))
+            price_input.clear()
+            price_input.send_keys(product_dict["price"])
+            time.sleep(0.5)
+
+            cannabinoids_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[1]/div/div/div/a[3]/span[1]/span/span')))
+            cannabinoids_button.click()
+            time.sleep(0.5)
+
+            for idx, (cannabinoid, value) in enumerate(product_dict.get("cannabinoids", {}).items()):
+                amount, unit_option = _parse_cannabinoid_value(value)
+
+                add_cannabinoid_button = wait.until(EC.element_to_be_clickable((By.XPATH,
+                    '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[3]'
+                    '//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "add")]'
+                )))
+                add_cannabinoid_button.click()
+                time.sleep(0.5)
+
+                # each added row gets its own (non-unique) id="type"/"id="unit"; the
+                # most recently added row is always the last match in the DOM
+                cannabinoid_type_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, '(//*[@id="type"])[last()]/div/div[1]/div[2]')))
+                cannabinoid_type_dropdown.click()
+                cannabinoid_type_option = wait.until(EC.element_to_be_clickable((By.XPATH, f'//*[@role="option" and text()="{cannabinoid}"]')))
+                cannabinoid_type_option.click()
+                time.sleep(0.5)
+
+                cannabinoid_unit_dropdown = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, '(//*[@id="unit"])[last()]//div[contains(@class, "indicatorContainer")]')
+                ))
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", cannabinoid_unit_dropdown)
+                time.sleep(0.3)
+                cannabinoid_unit_dropdown.click()
+                cannabinoid_unit_option = wait.until(EC.element_to_be_clickable((By.XPATH, f'//*[@role="option" and text()="{unit_option}"]')))
+                cannabinoid_unit_option.click()
+                time.sleep(0.5)
+
+                min_input = wait.until(EC.element_to_be_clickable((By.XPATH, f'//*[@id="cannabinoids[{idx}].min"]')))
+                min_input.clear()
+                min_input.send_keys(amount)
+                time.sleep(0.5)
+
+                max_input = wait.until(EC.element_to_be_clickable((By.XPATH, f'//*[@id="cannabinoids[{idx}].max"]')))
+                max_input.clear()
+                max_input.send_keys(amount)
+                time.sleep(0.5)
+
+        except Exception as e:
+            pass
+
+    finally:
+        driver.quit()
+
 def set_webhooks(base_url: str) -> None:
     new_order_url = base_url + "/new_order"
     complete_order_url = base_url + "/complete_order"
@@ -345,5 +549,30 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'TGPFflows.settings')
     django.setup()
-    pull_from_chiles()
+    #pull_from_chiles()
     #dispatch_to_driver()
+
+    product_dict = {
+        "product_name": "Blueberry ZZZ | 2:1 THC:CBN | 10 Pack Gummies",
+        "brand": "Kingpen",
+        "product_type": "Infused Edible",
+        "lineage": "Indica",
+        "strain": "Blueberry ZZZ",
+        "category": "Edibles",
+        "subcategory": "Sleep",
+        "seo_title": "Blueberry ZZZ Sleep Gummies Kingpen",
+        "description": "Wind down with Blueberry ZZZ — a 2:1 THC:CBN gummy designed to ease you into sleep with blueberry flavor and a calming, sedating effect. CBN adds a natural sleep-support layer to every dose for a deeper, more restful night.",
+        "sale_discount": "10%",
+        "tags": "",
+        "for_sale": "Yes",
+        "weight_size": 100,
+        "unit": "mg",
+        "name_variant": "Blueberry ZZZ 2:1 THC:CBN",
+        "price": 11.99,
+        "cannabinoids": {
+            "THC": "100mg",
+            "CBN": "50mg"
+        }
+    }
+
+    create_product(product_dict)

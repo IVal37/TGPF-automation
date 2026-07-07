@@ -16,4 +16,5 @@ urlpatterns = [
     path("clear_restock", views.clear_restock),
     path("add_shell_order", views.add_shell_order_view),
     path("set_driver_location", views.set_driver_location_view),
+    path("add_products_from_invoice", views.add_products_from_invoice),
 ]

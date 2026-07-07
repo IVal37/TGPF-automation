@@ -180,6 +180,15 @@
     </div>
     {% endif %}
 
+    <div>
+      <div style="font-size:0.85rem; color:#555; margin-bottom:0.4rem;">Add products from invoice</div>
+      <form method="post" action="/add_products_from_invoice" enctype="multipart/form-data" class="startup-form">
+        {% csrf_token %}
+        <input type="file" name="invoice" accept="image/*,.pdf" required>
+        <button class="btn-action" type="submit">Upload</button>
+      </form>
+    </div>
+
   </div>
 
   <p class="section-title">Completed Orders</p>

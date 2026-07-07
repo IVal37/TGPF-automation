@@ -16,7 +16,8 @@ from orders.services.dispatch import extract_msg_info, get_dispatch_msg, is_unde
 from orders.services.scrapers.talkroute import send_message
 from orders.services.scrapers.weedmaps import get_wm_payment_type
 from orders.services.note import get_order_notes
-from orders.services.scrapers.webjoint import dispatch_to_driver, fill_order_notes, pull_from_chiles
+from orders.services.scrapers.webjoint import create_product, dispatch_to_driver, fill_order_notes, pull_from_chiles
+from orders.services.invoice import extract_products_from_invoice
 from orders.constants import BLOCKED_ADDRESSES, CITY_MINS
 from orders.services.hours import closing_dt, is_past_closing
 from orders.services.engine import add_driver, add_order, add_shell_order, cancel_order, complete_order, delete_driver
@@ -155,6 +156,14 @@ def add_shell_order_view(request):
     city = request.POST.get("city")
     if city:
         add_shell_order(city)
+    return redirect("/")
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def add_products_from_invoice(request):
+    invoice_file = request.FILES["invoice"]
+    products = extract_products_from_invoice(invoice_file.read(), invoice_file.content_type)
+    create_product(products)
     return redirect("/")
 
 @csrf_exempt

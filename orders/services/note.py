@@ -2,14 +2,13 @@
 from decimal import Decimal
 
 # imports from project
-from orders.services.scrapers.weedmaps import get_wm_payment_type
 from orders.services.money import round_money
 from orders.services.state import orders_by_id
 from orders.services.time import format_time
 
 def get_order_notes(dict):
     is_wm = dict["source"] not in ("POS", "Website")
-    payment_type = get_wm_payment_type() if is_wm else dict["pay_type"]
+    payment_type = dict["pay_type"]
     debit_total = round_money(dict["total"] * Decimal("1.03"))
 
     if payment_type == "Cash":
