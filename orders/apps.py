@@ -14,12 +14,15 @@ class OrdersConfig(AppConfig):
         # Django dev server calls ready() twice: once in the reloader and once
         # in the actual server process. RUN_MAIN='true' only in the server process,
         # so we skip the reloader pass to avoid double-starting ngrok and
-        # double-loading drivers into the in-memory state lists.
-        if os.environ.get('RUN_MAIN') != 'true':
+        # double-loading drivers into the in-memory state lists. With --noreload
+        # there's no reloader fork at all, so RUN_MAIN is never set - in that
+        # case we must not skip, since this is the only ready() call we get.
+        if 'runserver' not in sys.argv:
             return
-        if 'runserver' in sys.argv:
-            from orders.management.commands.start_ngrok import start_ngrok
-            start_ngrok()
+        if '--noreload' not in sys.argv and os.environ.get('RUN_MAIN') != 'true':
+            return
+        from orders.management.commands.start_ngrok import start_ngrok
+        start_ngrok()
         self._load_active_drivers()
 
     def _load_active_drivers(self):

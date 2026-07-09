@@ -9,7 +9,7 @@ from typing import Dict, Optional, Tuple, List
 logger = logging.getLogger(__name__)
 
 # imports from django
-# from django.conf import settings
+from django.conf import settings
 
 # imports from selenium
 from selenium import webdriver
@@ -28,8 +28,8 @@ def _create_driver():
     opts = Options()
     opts.add_experimental_option("prefs", prefs)
     opts.add_argument("--window-size=1280,720")
-    # if not settings.TEST_MODE:
-    #     opts.add_argument("--headless=new")
+    if settings.HEADLESS:
+        opts.add_argument("--headless=new")
     driver = webdriver.Chrome(options=opts)
     return driver, WebDriverWait(driver, 15)
 
@@ -273,17 +273,19 @@ def dispatch_to_driver():
             driver_button = wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/div/div[2]/div/div/div[2]/div/div/div[2]/table/tbody/tr/td[1]/div/label/span[1]/span[1]/input')))
             driver.execute_script("arguments[0].scrollIntoView({block:'center'});", driver_button)
             driver_button.click()
+            time.sleep(1)
 
             action_button = wait.until(EC.element_to_be_clickable((By.ID, 'selectActionButton')))
             action_button.click()
+            time.sleep(1)
 
             dispatch_button = wait.until(EC.element_to_be_clickable((By.ID, 'assignDriver')))
             dispatch_button.click()
+            time.sleep(1)
 
             confirm_button = wait.until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]')))
             confirm_button.click()
-
-            time.sleep(1)
+            time.sleep(2)
 
         except Exception as e:
             logger.error("dispatch_to_driver: failed to click newest order: %s", e)
@@ -355,7 +357,7 @@ def _find_existing_product(driver, wait, name: str) -> Optional[str]:
     query = name.split("|")[0].strip()
     search_input.clear()
     search_input.send_keys(query)
-    time.sleep(1)  # let the table filter
+    time.sleep(3)  # let the table filter
 
     target = _normalize_product_name(name)
     best_match, best_ratio = None, 0.0
@@ -606,5 +608,172 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'TGPFflows.settings')
     django.setup()
-    pull_from_chiles()
+    #pull_from_chiles()
     #dispatch_to_driver()
+
+    test_list = [
+        {
+            "product_name": "OG Kush x Northern Lights | Junior | 0.75g 4-Pack Preroll",
+            "brand": "Kingroll",
+            "product_type": "Buds",
+            "lineage": "Indica",
+            "strain": "OG Kush x Northern Lights",
+            "category": "Prerolls",
+            "subcategory": "Non-Infused Preroll Packs",
+            "seo_title": "OG Kush x Northern Lights Junior 4-Pack Kingroll",
+            "description": "Two indica legends united — OG Kush x Northern Lights brings classic earthy pine and sweet musk together in a deeply relaxing cross that settles the body and quiets the mind. This Junior 4-pack is built for easy, consistent evening sessions.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 3,
+            "unit": "g",
+            "name_variant": "OG Kush x Northern Lights",
+            "price": 36.99
+        },
+        {
+            "product_name": "Berries and Cream | 510 Threaded",
+            "brand": "Dime Bag",
+            "product_type": "Concentrate",
+            "lineage": "Hybrid",
+            "strain": "Berries and Cream",
+            "category": "Cartridges",
+            "subcategory": "Mid Shelf | 510",
+            "seo_title": "Berries and Cream 510 Dime Bag",
+            "description": "Sweet, smooth, and satisfying — Berries and Cream delivers a lush mix of ripe berry flavor with a creamy, dessert-like finish. This hybrid 510 cart offers a balanced, easygoing high that's perfect for unwinding without fully checking out.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 1,
+            "unit": "g",
+            "name_variant": "Berries and Cream 510",
+            "price": 18.99
+        },
+        {
+            "product_name": "Mango Lemonade | 510 Threaded",
+            "brand": "Dime Bag",
+            "product_type": "Concentrate",
+            "lineage": "Sativa",
+            "strain": "Mango Lemonade",
+            "category": "Cartridges",
+            "subcategory": "Mid Shelf | 510",
+            "seo_title": "Mango Lemonade 510 Dime Bag",
+            "description": "Bright, tropical, and refreshing — Mango Lemonade blends ripe mango sweetness with a sharp citrus finish for a sativa cart that's as uplifting as it is flavorful. A go-to for daytime energy and a sunny mood boost.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 1,
+            "unit": "g",
+            "name_variant": "Mango Lemonade 510",
+            "price": 18.99
+        },
+        {
+            "product_name": "Lemon Diesel | FZL Originals | 2.5g Preroll",
+            "brand": "Fuzzies",
+            "product_type": "Buds",
+            "lineage": "Sativa",
+            "strain": "Lemon Diesel",
+            "category": "Prerolls",
+            "subcategory": "Non-Infused Preroll Packs",
+            "seo_title": "Lemon Diesel Preroll Fuzzies",
+            "description": "Sharp citrus and fuel collide in Lemon Diesel — a punchy sativa-dominant strain with a bright, zesty aroma and an energizing, clear-headed buzz. Perfect for daytime productivity or a creative boost.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 2.5,
+            "unit": "g",
+            "name_variant": "Lemon Diesel",
+            "price": 24.99
+        },
+        {
+            "product_name": "Magic Melon x Bananalope Haze | Junior | 0.75g 4-Pack Preroll",
+            "brand": "Kingroll",
+            "product_type": "Buds",
+            "lineage": "Sativa",
+            "strain": "Magic Melon x Bananalope Haze",
+            "category": "Prerolls",
+            "subcategory": "Non-Infused Preroll Packs",
+            "seo_title": "Magic Melon x Bananalope Haze Junior 4-Pack Kingroll",
+            "description": "Sweet cantaloupe and tropical banana haze come together in a bright, uplifting sativa cross that keeps energy high and the mood light. This Junior 4-pack is a fruity, fun option for daytime sharing.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 3,
+            "unit": "g",
+            "name_variant": "Magic Melon x Bananalope Haze",
+            "price": 36.99
+        },
+        {
+            "product_name": "Cherry Limeade | 510 Threaded",
+            "brand": "Dime Bag",
+            "product_type": "Concentrate",
+            "lineage": "Hybrid",
+            "strain": "Cherry Limeade",
+            "category": "Cartridges",
+            "subcategory": "Mid Shelf | 510",
+            "seo_title": "Cherry Limeade 510 Dime Bag",
+            "description": "Tart cherry and zesty lime make Cherry Limeade one of the most refreshing carts in the lineup — a hybrid that balances sweet fruit flavor with a clean, balanced high that works any time of day.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 1,
+            "unit": "g",
+            "name_variant": "Cherry Limeade 510",
+            "price": 18.99
+        },
+        {
+            "product_name": "Grape Ape | FZL Originals | 2.5g Preroll",
+            "brand": "Fuzzies",
+            "product_type": "Buds",
+            "lineage": "Indica",
+            "strain": "Grape Ape",
+            "category": "Prerolls",
+            "subcategory": "Non-Infused Preroll Packs",
+            "seo_title": "Grape Ape Preroll Fuzzies",
+            "description": "Sweet purple grape and berry aromatics lead into a smooth, deeply relaxing indica experience — Grape Ape is a classic strain that delivers consistent full-body ease and a calm, settled headspace. A reliable evening preroll.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 2.5,
+            "unit": "g",
+            "name_variant": "Grape Ape",
+            "price": 24.99
+        },
+        {
+            "product_name": "Blue Dream | FZL Originals | 2.5g Preroll",
+            "brand": "Fuzzies",
+            "product_type": "Buds",
+            "lineage": "Hybrid",
+            "strain": "Blue Dream",
+            "category": "Prerolls",
+            "subcategory": "Non-Infused Preroll Packs",
+            "seo_title": "Blue Dream Preroll Fuzzies",
+            "description": "Bright and balanced, Blue Dream is a California classic that pairs sweet berry aromatics with a smooth, uplifting cerebral high. This sativa-leaning hybrid is easygoing enough for daytime use, delivering creative energy and full-body relaxation without sedation.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 2.5,
+            "unit": "g",
+            "name_variant": "Blue Dream",
+            "price": 24.99
+        },
+        {
+            "product_name": "White Rntz x Apple Fritter | Junior | 0.75g 4-Pack Preroll",
+            "brand": "Kingroll",
+            "product_type": "Buds",
+            "lineage": "Hybrid",
+            "strain": "White Rntz x Apple Fritter",
+            "category": "Prerolls",
+            "subcategory": "Non-Infused Preroll Packs",
+            "seo_title": "White Rntz x Apple Fritter Junior 4-Pack Kingroll",
+            "description": "Candy-sweet Runtz meets warm, doughy Apple Fritter in a hybrid cross that's rich in flavor and balanced in effect. Euphoric and relaxing in equal measure, this Junior 4-pack is a dessert lover's dream spread across four smooth sessions.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 3,
+            "unit": "g",
+            "name_variant": "White Rntz x Apple Fritter",
+            "price": 36.99
+        }
+    ]
+
+    create_product(test_list)
