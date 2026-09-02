@@ -24,9 +24,6 @@ class Driver(models.Model):
         order.driver = self
         order.save()
 
-    def complete_order(self, order_id) -> None:
-        self.orders.filter(order_id=order_id).update(driver=None)
-
     def get_active_orders(self):
         return list(self.orders.all())
 
@@ -51,7 +48,16 @@ class Order(models.Model):
     discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     completed = models.BooleanField(default=False)
+    dispatch_sent = models.BooleanField(default=False)
+    is_storefront = models.BooleanField(default=False)
+    # set on the companion (FSA/FSM) order, pointing at the real customer's
+    # order it's actually part of — see engine.get_effective_total
+    linked_order = models.ForeignKey(
+        'self', null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='linked_companions'
+    )
 
     def get_id(self):
         return self.order_id

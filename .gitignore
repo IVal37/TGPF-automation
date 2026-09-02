@@ -10,6 +10,15 @@ __pycache__/
 # Django
 db.sqlite3
 
+# Celery
+celerybeat-schedule
+
+# Redis
+dump.rdb
+
+# run.sh output
+logs/
+
 # OS
 .DS_Store
 

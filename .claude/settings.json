@@ -3,6 +3,8 @@
     "allow": [
       "Bash(pip show *)",
       "Bash(mysql --version)",
+      "Bash(mysqld --version)",
+      "Bash(mysqladmin ping *)",
       "Bash(sudo service mysql status)",
       "Bash(sudo service mysql start)",
       "Bash(service mysql *)",
@@ -10,13 +12,17 @@
       "Bash(chown mysql:mysql /var/run/mysqld)",
       "Bash(sudo mkdir -p /var/run/mysqld)",
       "Bash(sudo chown mysql:mysql /var/run/mysqld)",
-      "Bash(python manage.py check)",
-      "Bash(/home/izaak/TGPFflows/.venv/bin/python /home/izaak/TGPFflows/manage.py check)",
-      "Bash(.venv/bin/python manage.py showmigrations)",
-      "Bash(.venv/bin/python manage.py check)",
-      "Bash(.venv/bin/python -c ' *)",
-      "Bash(.venv/bin/python manage.py makemigrations --check)",
-      "Bash(.venv/bin/python manage.py makemigrations orders)"
+      "Read(//var/run/**)",
+      "Read(//run/**)",
+      "Bash(python manage.py check*)",
+      "Bash(python manage.py test*)",
+      "Bash(python3 manage.py test*)",
+      "Bash(.venv/bin/python manage.py test*)",
+      "Bash(.venv/bin/python manage.py check*)",
+      "Bash(.venv/bin/python manage.py showmigrations*)",
+      "Bash(.venv/bin/python manage.py makemigrations*)",
+      "Bash(/home/izaak/TGPFflows/.venv/bin/python /home/izaak/TGPFflows/manage.py check*)",
+      "Bash(.venv/bin/python -c ' *)"
     ]
   }
 }

@@ -5,11 +5,19 @@ from datetime import datetime
 from typing import List
 
 # imports from project
+from orders.models import Order
 from orders.services.money import round_money
 from orders.services.eta import get_eta
 from orders.services.time import format_time
 from orders.services.state import orders_by_id
-from orders.constants import CITY_MINS, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS
+from orders.services.hours import closing_dt
+from orders.constants import CITY_MINS, FSA_FSM_NAMES, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS
+
+# is this the "Frank Sinatra Adult"/"Frank Sinatra Medical" placeholder
+# account? (either a legal-limit split's second order, or an unrelated lazy
+# 3rd St walk-in sale — see orders/views.py:link_order_view)
+def is_fsa_fsm(customer_name: str) -> bool:
+    return customer_name.strip().lower() in FSA_FSM_NAMES
 
 # gets relevant items from full JSON dict
 # @params:
@@ -85,9 +93,6 @@ def CalculateForMinCheck(dict):
 #   dispatch_msg - message to send customer with all necessary info
 def normal_dispatch_msg(dict):
     payment_type = dict["pay_type"]
-    order_total = get_adjusted_total(dict["total"], payment_type)
-    rounded_total = round_money(order_total)
-    
     early_eta, late_eta = get_eta(dict["id"])
 
     if dict.get("delivery_timing") == "Scheduled" and dict.get("scheduled_end"):
@@ -99,24 +104,97 @@ def normal_dispatch_msg(dict):
             early_eta = format_time(sched_start_dt)
             late_eta = format_time(sched_end_dt)
 
+    return render_dispatch_msg(dict["name"], dict["last_name"], dict["discount"], dict["total"], payment_type, early_eta, late_eta)
+
+# renders the customer-facing dispatch SMS from its component parts.
+# shared by normal_dispatch_msg (order-creation time, ETA fresh off get_eta)
+# and build_dispatch_msg_from_order (send time, after a dispatcher approves or
+# edits the ETA window) so both paths produce identical message formatting.
+# @params:
+#   name, last_name - customer name, used for the greeting and the
+#     merchant-pay-customer lookup
+#   discount, total, payment_type - order fields that affect pricing text
+#   early_eta, late_eta - already-formatted ETA window strings (e.g. "2:30")
+# @returns:
+#   dispatch_msg - message to send customer with all necessary info
+def render_dispatch_msg(name, last_name, discount, total, payment_type, early_eta, late_eta):
+    order_total = get_adjusted_total(total, payment_type)
+    rounded_total = round_money(order_total)
+
     in_area_text = f"will be in the area between {early_eta}-{late_eta}"
 
     card_fee_text = "" if payment_type in ("Cash", "Merchant Pay - ACH") else "including card fee "
 
-    merch_pay_used_bool = True if (dict["name"] + ' ' + dict["last_name"]) in MERCHANT_PAY_CUSTOMERS else False
+    merch_pay_used_bool = True if (name + ' ' + last_name) in MERCHANT_PAY_CUSTOMERS else False
     merch_pay_fee_text = "including Merchant Pay fee " if merch_pay_used_bool else ""
     merch_pay_used_text = "I will send over your merchant pay link in a moment. " if merch_pay_used_bool else ""
 
     rand_valediction = choice(VALEDICTIONS)
 
     dispatch_msg = (
-        f'Hi {dict["name"]}, thank you for your order from TGPF. You saved ${dict["discount"]} with discounts ' +
+        f'Hi {name}, thank you for your order from TGPF. You saved ${discount} with discounts ' +
         f'and your total {card_fee_text}{merch_pay_fee_text}is ${rounded_total}. {merch_pay_used_text}Your driver ' +
         f'{in_area_text} and you will get an auto update when he is directly en route to you and when he arrives. ' +
         f'{rand_valediction}'
     )
 
     return dispatch_msg
+
+# splits an Order's customer_name into (first, last) the same way
+# extract_msg_info does for the original webhook payload
+def _split_customer_name(order):
+    parts = order.customer_name.split()
+    name = parts[0].capitalize() if parts else ""
+    last_name = parts[1].capitalize() if len(parts) > 1 else ""
+    return name, last_name
+
+# returns the total actually owed for an order, accounting for a legal-limit
+# split: if another order is linked to this one (a companion FSA/FSM order —
+# see orders/views.py:link_order_view), the two are really one delivery, so
+# their totals combine minus whichever of the two delivery fees is lower
+# (never double-charge two delivery fees for one stop). Orders with no linked
+# companion are unaffected — this just returns order.total unchanged.
+def get_effective_total(order) -> Decimal:
+    companion = Order.objects.filter(linked_order=order).first()
+    if companion is None:
+        return order.total
+    lower_fee = min(order.delivery_fee, companion.delivery_fee)
+    return order.total + companion.total - lower_fee
+
+# rebuilds the dispatch SMS from an Order row at send time, using whatever
+# eta_start/eta_end are currently on the order — i.e. the dispatcher-approved
+# or dispatcher-edited window, not necessarily the original system suggestion.
+# @params:
+#   order - Order instance (should be freshly fetched from the DB so
+#     payment_type/eta reflect the latest saved state)
+# @returns:
+#   dispatch_msg - message to send customer with the approved ETA window
+def build_dispatch_msg_from_order(order) -> str:
+    name, last_name = _split_customer_name(order)
+    return render_dispatch_msg(
+        name, last_name, order.discount, get_effective_total(order), order.payment_type,
+        format_time(order.eta_start), format_time(order.eta_end),
+    )
+
+# builds the "driver won't make it out tonight" reschedule text from an Order
+# row, used when a dispatcher decides a past-closing order should be
+# rescheduled rather than dispatched with a late-hours ETA.
+# @params:
+#   order - Order instance with eta_start set (used to determine the
+#     business's closing hour for that day)
+# @returns:
+#   reschedule_msg - message offering to cancel or reschedule for the morning
+def build_reschedule_msg_from_order(order) -> str:
+    name, _ = _split_customer_name(order)
+    close_time = closing_dt(order.eta_start)
+    close_str = f"{close_time.hour % 12 or 12}pm"
+
+    return (
+        f'Hi {name}, thank you for your order from TGPF. '
+        f'Unfortunately our driver will not be able to make it out to you by '
+        f'{close_str} tonight. I can cancel your order or reschedule it for first '
+        f'thing in the morning, let me know what works. Thanks!'
+    )
 
 # create message for orders below minimum
 # @params:

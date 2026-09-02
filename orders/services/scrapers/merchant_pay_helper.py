@@ -5,6 +5,9 @@ IMAP_HOST = "imap.gmail.com"
 IMAP_USER = os.environ.get('MERCHANT_PAY_IMAP_USER', '')
 IMAP_PASS = os.environ.get('MERCHANT_PAY_IMAP_PASS', '')
 
+# sender of GBX MerchantPay's "One-time verification code" email
+CODE_SENDER = "donotreply@greenbaxmarketplace.io"
+
 CODE_RE = re.compile(r"\b(\d{6})\b")
 
 def FetchCode(timeout=120, poll=5):
@@ -13,8 +16,7 @@ def FetchCode(timeout=120, poll=5):
         M.login(IMAP_USER, IMAP_PASS)
         while time.time() < end:
             M.select("INBOX")
-            # tweak the search to narrow sender/subject
-            typ, data = M.search(None, 'UNSEEN OR SUBJECT "verification" SUBJECT "code"')
+            typ, data = M.search(None, f'UNSEEN FROM "{CODE_SENDER}"')
             ids = data[0].split()
             if ids:
                 # look at newest first

@@ -1,0 +1,35 @@
+<p class="section-title" style="margin-top: 0;">Completed Orders</p>
+
+{% if completed_orders %}
+  <form method="post" action="/reconcile_restock">
+    {% csrf_token %}
+    {% for entry in completed_orders %}
+      <div class="order-row">
+        <input type="checkbox" name="order_ids" value="{{ entry.order_id }}" id="o_{{ entry.order_id }}">
+        <label for="o_{{ entry.order_id }}">{{ entry.customer_name }}</label>
+      </div>
+    {% endfor %}
+    <button class="btn-restock" type="submit">Restock Time</button>
+  </form>
+{% else %}
+  <p class="empty">No completed orders yet.</p>
+{% endif %}
+
+<p class="section-title">Restock List</p>
+
+{% if restock_items %}
+  <ul class="restock-list">
+    {% for name, info in restock_items.items %}
+    <li>
+      <span class="restock-name">{{ name }}</span>
+      <span class="restock-qty">&times; {{ info.quantity }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  <form method="post" action="/clear_restock">
+    {% csrf_token %}
+    <button class="btn-clear" type="submit">Complete Restock</button>
+  </form>
+{% else %}
+  <p class="empty">No items yet.</p>
+{% endif %}

@@ -13,7 +13,7 @@ CITY_MINS = {
     "Brooks": Decimal("200.00"),
     "Davis": Decimal("25.00"),
     "Dixon": Decimal("35.00"),
-    "Dunnigon": Decimal("200.00"),
+    "Dunnigan": Decimal("200.00"),
     "East Sacramento": Decimal("75.00"),
     "Elk Grove": Decimal("65.00"),
     "Esparto": Decimal("100.00"),
@@ -38,6 +38,10 @@ MERCHANT_PAY_CUSTOMERS = (
     "Chelsea Rosenkild"
 )
 
+# placeholder accounts used for a second adult on a legal-limit split order,
+# or (unrelated to that) a lazy walk-in sale at 3rd St — see dispatch.is_fsa_fsm
+FSA_FSM_NAMES = {"frank sinatra adult", "frank sinatra medical"}
+
 # returns TRAVEL_TIME dict populated in both directions
 def symmetrize(base_dict: DefaultDict[Tuple[str, str], int]) -> DefaultDict:
     symetric_dict: DefaultDict[Tuple[str, str], int] = defaultdict(lambda: _DEFAULT_TRAVEL_TIME, {})
@@ -55,20 +59,20 @@ TRAVEL_TIME: DefaultDict[Tuple[str, str], int] = symmetrize(defaultdict(
     {
         ("Davis", "Dixon"): 15,
         ("Davis", "Fairfield"): 40,
-        ("Davis", "Vacaville"): 25,
+        ("Davis", "Vacaville"): 35,
         ("Davis", "Winters"): 30,
         ("Davis", "Woodland"): 20,
 
         ("Dixon", "Fairfield"): 25,
-        ("Dixon", "Vacaville"): 15,
+        ("Dixon", "Vacaville"): 20,
         ("Dixon", "Winters"): 20,
         ("Dixon", "Woodland"): 25,
 
-        ("Fairfield", "Vacaville"): 10,
+        ("Fairfield", "Vacaville"): 15,
         ("Fairfield", "Winters"): 25,
         ("Fairfield", "Woodland"): 45,
         
-        ("Vacaville", "Winters"): 20,
+        ("Vacaville", "Winters"): 25,
         ("Vacaville", "Woodland"): 30,
 
         ("Winters", "Woodland"): 30
@@ -81,7 +85,7 @@ def get_travel_time(city_a: str, city_b: str) -> int:
     return TRAVEL_TIME.get((city_a, city_b), _DEFAULT_TRAVEL_TIME)
 
 BLOCKED_ADDRESSES = {
-    ("526 3rd Street", "95618"),
+    ("526 3rd Street", "95616"),
 }
 
 VALEDICTIONS = [

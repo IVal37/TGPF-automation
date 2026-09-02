@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from celery.schedules import crontab
 
 load_dotenv()
 
@@ -158,5 +159,31 @@ LOGGING = {
             'level': 'INFO',
             'propagate': False,
         },
+    },
+}
+
+# Celery — daily Telegram restock digests. Run alongside `manage.py runserver`:
+#   redis-server
+#   celery -A TGPFflows worker --loglevel=info
+#   celery -A TGPFflows beat --loglevel=info
+
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = False
+
+CELERY_BEAT_SCHEDULE = {
+    # 3rd St storefront closes at 8:30pm every day
+    'send-third-st-restock': {
+        'task': 'orders.tasks.send_third_st_restock',
+        'schedule': crontab(hour=20, minute=30),
+    },
+    # delivery side closes at 10pm Mon-Sat, 5pm Sunday — matches hours.py
+    'send-delivery-restock-weekday': {
+        'task': 'orders.tasks.send_delivery_restock',
+        'schedule': crontab(hour=22, minute=0, day_of_week='mon,tue,wed,thu,fri,sat'),
+    },
+    'send-delivery-restock-sunday': {
+        'task': 'orders.tasks.send_delivery_restock',
+        'schedule': crontab(hour=17, minute=0, day_of_week='sun'),
     },
 }

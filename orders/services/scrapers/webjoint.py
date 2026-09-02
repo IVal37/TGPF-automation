@@ -172,8 +172,9 @@ def pull_from_chiles():
                             chiles_input.send_keys(str(chiles_qty + shift_qty))
                             time.sleep(0.3)
                             remove_btns[shift_idx].click()
-                            time.sleep(0.5)
+                            time.sleep(1.5)
                             split_save_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//button[contains(.,"Save Changes")]')))
+                            time.sleep(1)
                             split_save_btn.click()
                             time.sleep(1)
                         else:
@@ -200,10 +201,11 @@ def pull_from_chiles():
 
                     if chiles_opts:
                         chiles_opts[0].click()
-                        time.sleep(0.5)
+                        time.sleep(1.5)
                         save_btn = wait.until(EC.element_to_be_clickable(
                             (By.XPATH, '//button[contains(.,"Save Changes")]')
                         ))
+                        time.sleep(1)
                         save_btn.click()
                     else:
                         item_name = row.text.split("\n")[0].strip()
@@ -281,11 +283,12 @@ def dispatch_to_driver():
 
             dispatch_button = wait.until(EC.element_to_be_clickable((By.ID, 'assignDriver')))
             dispatch_button.click()
-            time.sleep(1)
+            time.sleep(2)
 
             confirm_button = wait.until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]')))
+            time.sleep(1.5)
             confirm_button.click()
-            time.sleep(2)
+            time.sleep(1)
 
         except Exception as e:
             logger.error("dispatch_to_driver: failed to click newest order: %s", e)
@@ -345,6 +348,23 @@ def _normalize_product_name(name: str) -> str:
     return re.sub(r'[^a-z0-9]+', ' ', name.lower()).strip()
 
 
+def _clear_react_input(input_el):
+    """Reliably empty a React-controlled MUI text field.
+
+    The search box on the Products page is reused across every product in the
+    loop, and plain .clear() only wipes the DOM value — it doesn't always fire
+    the input event React needs to update its own controlled state, so the
+    previous query can silently survive and get typed-after rather than
+    replaced. Select-all + delete fires real key events instead.
+    """
+    for _ in range(3):
+        if input_el.get_attribute("value") == "":
+            return
+        input_el.send_keys(Keys.CONTROL, "a")
+        input_el.send_keys(Keys.DELETE)
+        time.sleep(0.2)
+
+
 def _find_existing_product(driver, wait, name: str) -> Optional[str]:
     """Search the Products list for an existing product matching `name`.
 
@@ -355,7 +375,7 @@ def _find_existing_product(driver, wait, name: str) -> Optional[str]:
     """
     search_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//input[@placeholder="Search Products..."]')))
     query = name.split("|")[0].strip()
-    search_input.clear()
+    _clear_react_input(search_input)
     search_input.send_keys(query)
     time.sleep(3)  # let the table filter
 
@@ -370,7 +390,6 @@ def _find_existing_product(driver, wait, name: str) -> Optional[str]:
         if ratio > best_ratio:
             best_match, best_ratio = candidate, ratio
 
-    search_input.clear()
     time.sleep(0.5)
 
     return best_match if best_ratio >= _PRODUCT_NAME_MATCH_THRESHOLD else None
@@ -399,13 +418,15 @@ def create_product(product_dicts: List[Dict[str, str]]):
         
         for product_dict in product_dicts:
             try:
-                existing = _find_existing_product(driver, wait, product_dict["product_name"])
-                if existing:
-                    logger.info(
-                        "create_product: skipping %r — fuzzy-matches existing product %r",
-                        product_dict["product_name"], existing,
-                    )
-                    continue
+                # fuzzy duplicate check disabled for now (helpers below still
+                # intact — uncomment to re-enable):
+                # existing = _find_existing_product(driver, wait, product_dict["product_name"])
+                # if existing:
+                #     logger.info(
+                #         "create_product: skipping %r — fuzzy-matches existing product %r",
+                #         product_dict["product_name"], existing,
+                #     )
+                #     continue
 
                 add_product_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[text()="Add a New Product"]')))
                 add_product_button.click()
@@ -424,13 +445,23 @@ def create_product(product_dicts: List[Dict[str, str]]):
                 _fill_autocomplete(driver, wait, product_type_input, product_dict["product_type"])
                 time.sleep(0.5)
 
-                lineage_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="lineage"]/div/div[1]/div[2]')))
-                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", lineage_dropdown)
-                lineage_dropdown.click()
-                time.sleep(0.5)
-                lineage_option = wait.until(EC.element_to_be_clickable((By.XPATH, f'//*[@role="option" and text()="{product_dict["lineage"]}"]')))
-                lineage_option.click()
-                time.sleep(0.5)
+                if product_dict["lineage"] != "":
+                    lineage_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="lineage"]/div/div[1]/div[2]')))
+                    driver.execute_script("arguments[0].scrollIntoView({block:'center'});", lineage_dropdown)
+                    lineage_dropdown.click()
+                    time.sleep(0.5)
+                    # exact-match on the full rendered text (not XPath text(), which only
+                    # sees an option's direct child text nodes — "Indica" as a bare XPath
+                    # text() match also matches an "Indica Dominant" option if "Dominant"
+                    # is rendered in a nested span, e.g. <li>Indica<span>Dominant</span></li>)
+                    lineage_options = wait.until(EC.presence_of_all_elements_located((By.XPATH, '//*[@role="option"]')))
+                    lineage_option = next(
+                        (o for o in lineage_options if o.text.strip() == product_dict["lineage"]), None
+                    )
+                    if lineage_option is None:
+                        raise ValueError(f'no lineage dropdown option matches {product_dict["lineage"]!r}')
+                    lineage_option.click()
+                    time.sleep(0.5)
 
                 strain_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="strain"]//input')))
                 _fill_autocomplete(driver, wait, strain_input, product_dict["strain"])
@@ -461,6 +492,13 @@ def create_product(product_dicts: List[Dict[str, str]]):
 
                 description_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[1]/div/div[2]/div[8]/div/div/div/div[3]/div[1]')))
                 description_input.clear()
+                # this is a rich-text (contenteditable) field, not a plain textarea —
+                # without a beat after clear(), the editor's focus/selection state
+                # hasn't settled yet and the first keystroke can land before it's
+                # ready, getting replayed at the end once the editor catches up
+                # (e.g. "Bright..." -> "right...B"). seo_description below is a
+                # plain field and doesn't need this.
+                time.sleep(2)
                 description_input.send_keys(product_dict["description"])
                 time.sleep(0.5)
 
@@ -613,167 +651,67 @@ if __name__ == "__main__":
 
     test_list = [
         {
-            "product_name": "OG Kush x Northern Lights | Junior | 0.75g 4-Pack Preroll",
-            "brand": "Kingroll",
+            "product_name": "Artic Mintz Ice | Platinum | Diamond Infused | 1.65g Blunt",
+            "brand": "El Blunto",
+            "product_type": "Buds",
+            "lineage": "Sativa",
+            "strain": "Artic Mintz Ice",
+            "category": "Prerolls",
+            "subcategory": "Blunts | Infused & Non-Infused",
+            "seo_title": "Artic Mintz Ice Blunt El Blunto",
+            "description": "Cool mint and icy freshness meet a bright, uplifting sativa effect — Artic Mintz Ice is a crisp, clean blunt with a refreshing terpene profile and a smooth, energizing high that hits from the first light to the last draw.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 1.65,
+            "unit": "g",
+            "name_variant": "Artic Mintz Ice",
+            "price": 21.99,
+            "cannabinoids": {
+                "THC": "44.7%"
+            }
+        },
+        {
+            "product_name": "Strawnana Frost | Platinum | Diamond Infused | 1.65g Blunt",
+            "brand": "El Blunto",
+            "product_type": "Buds",
+            "lineage": "Hybrid",
+            "strain": "Strawnana Frost",
+            "category": "Prerolls",
+            "subcategory": "Blunts | Infused & Non-Infused",
+            "seo_title": "Strawnana Frost Blunt El Blunto",
+            "description": "Sweet strawberry and ripe banana meet a cool, frosty finish — Strawnana Frost is a smooth, fruit-forward hybrid blunt with a balanced, easygoing effect that's as flavorful as it is satisfying.",
+            "sale_discount": "10%",
+            "tags": "",
+            "for_sale": "Yes",
+            "weight_size": 1.65,
+            "unit": "g",
+            "name_variant": "Strawnana Frost",
+            "price": 21.99,
+            "cannabinoids": {
+                "THC": "43.4%"
+            }
+        },
+        {
+            "product_name": "Blueberry Kickoff Haze | Platinum | Diamond Infused | 1.65g Blunt",
+            "brand": "El Blunto",
             "product_type": "Buds",
             "lineage": "Indica",
-            "strain": "OG Kush x Northern Lights",
+            "strain": "Blueberry Kickoff Haze",
             "category": "Prerolls",
-            "subcategory": "Non-Infused Preroll Packs",
-            "seo_title": "OG Kush x Northern Lights Junior 4-Pack Kingroll",
-            "description": "Two indica legends united — OG Kush x Northern Lights brings classic earthy pine and sweet musk together in a deeply relaxing cross that settles the body and quiets the mind. This Junior 4-pack is built for easy, consistent evening sessions.",
+            "subcategory": "Blunts | Infused & Non-Infused",
+            "seo_title": "Blueberry Kickoff Haze Blunt El Blunto",
+            "description": "Rich blueberry and hazy earthiness combine in a deeply relaxing indica blunt that hits hard and finishes smooth. Blueberry Kickoff Haze is a bold, flavorful smoke built for serious downtime.",
             "sale_discount": "10%",
             "tags": "",
             "for_sale": "Yes",
-            "weight_size": 3,
+            "weight_size": 1.65,
             "unit": "g",
-            "name_variant": "OG Kush x Northern Lights",
-            "price": 36.99
-        },
-        {
-            "product_name": "Berries and Cream | 510 Threaded",
-            "brand": "Dime Bag",
-            "product_type": "Concentrate",
-            "lineage": "Hybrid",
-            "strain": "Berries and Cream",
-            "category": "Cartridges",
-            "subcategory": "Mid Shelf | 510",
-            "seo_title": "Berries and Cream 510 Dime Bag",
-            "description": "Sweet, smooth, and satisfying — Berries and Cream delivers a lush mix of ripe berry flavor with a creamy, dessert-like finish. This hybrid 510 cart offers a balanced, easygoing high that's perfect for unwinding without fully checking out.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 1,
-            "unit": "g",
-            "name_variant": "Berries and Cream 510",
-            "price": 18.99
-        },
-        {
-            "product_name": "Mango Lemonade | 510 Threaded",
-            "brand": "Dime Bag",
-            "product_type": "Concentrate",
-            "lineage": "Sativa",
-            "strain": "Mango Lemonade",
-            "category": "Cartridges",
-            "subcategory": "Mid Shelf | 510",
-            "seo_title": "Mango Lemonade 510 Dime Bag",
-            "description": "Bright, tropical, and refreshing — Mango Lemonade blends ripe mango sweetness with a sharp citrus finish for a sativa cart that's as uplifting as it is flavorful. A go-to for daytime energy and a sunny mood boost.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 1,
-            "unit": "g",
-            "name_variant": "Mango Lemonade 510",
-            "price": 18.99
-        },
-        {
-            "product_name": "Lemon Diesel | FZL Originals | 2.5g Preroll",
-            "brand": "Fuzzies",
-            "product_type": "Buds",
-            "lineage": "Sativa",
-            "strain": "Lemon Diesel",
-            "category": "Prerolls",
-            "subcategory": "Non-Infused Preroll Packs",
-            "seo_title": "Lemon Diesel Preroll Fuzzies",
-            "description": "Sharp citrus and fuel collide in Lemon Diesel — a punchy sativa-dominant strain with a bright, zesty aroma and an energizing, clear-headed buzz. Perfect for daytime productivity or a creative boost.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 2.5,
-            "unit": "g",
-            "name_variant": "Lemon Diesel",
-            "price": 24.99
-        },
-        {
-            "product_name": "Magic Melon x Bananalope Haze | Junior | 0.75g 4-Pack Preroll",
-            "brand": "Kingroll",
-            "product_type": "Buds",
-            "lineage": "Sativa",
-            "strain": "Magic Melon x Bananalope Haze",
-            "category": "Prerolls",
-            "subcategory": "Non-Infused Preroll Packs",
-            "seo_title": "Magic Melon x Bananalope Haze Junior 4-Pack Kingroll",
-            "description": "Sweet cantaloupe and tropical banana haze come together in a bright, uplifting sativa cross that keeps energy high and the mood light. This Junior 4-pack is a fruity, fun option for daytime sharing.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 3,
-            "unit": "g",
-            "name_variant": "Magic Melon x Bananalope Haze",
-            "price": 36.99
-        },
-        {
-            "product_name": "Cherry Limeade | 510 Threaded",
-            "brand": "Dime Bag",
-            "product_type": "Concentrate",
-            "lineage": "Hybrid",
-            "strain": "Cherry Limeade",
-            "category": "Cartridges",
-            "subcategory": "Mid Shelf | 510",
-            "seo_title": "Cherry Limeade 510 Dime Bag",
-            "description": "Tart cherry and zesty lime make Cherry Limeade one of the most refreshing carts in the lineup — a hybrid that balances sweet fruit flavor with a clean, balanced high that works any time of day.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 1,
-            "unit": "g",
-            "name_variant": "Cherry Limeade 510",
-            "price": 18.99
-        },
-        {
-            "product_name": "Grape Ape | FZL Originals | 2.5g Preroll",
-            "brand": "Fuzzies",
-            "product_type": "Buds",
-            "lineage": "Indica",
-            "strain": "Grape Ape",
-            "category": "Prerolls",
-            "subcategory": "Non-Infused Preroll Packs",
-            "seo_title": "Grape Ape Preroll Fuzzies",
-            "description": "Sweet purple grape and berry aromatics lead into a smooth, deeply relaxing indica experience — Grape Ape is a classic strain that delivers consistent full-body ease and a calm, settled headspace. A reliable evening preroll.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 2.5,
-            "unit": "g",
-            "name_variant": "Grape Ape",
-            "price": 24.99
-        },
-        {
-            "product_name": "Blue Dream | FZL Originals | 2.5g Preroll",
-            "brand": "Fuzzies",
-            "product_type": "Buds",
-            "lineage": "Hybrid",
-            "strain": "Blue Dream",
-            "category": "Prerolls",
-            "subcategory": "Non-Infused Preroll Packs",
-            "seo_title": "Blue Dream Preroll Fuzzies",
-            "description": "Bright and balanced, Blue Dream is a California classic that pairs sweet berry aromatics with a smooth, uplifting cerebral high. This sativa-leaning hybrid is easygoing enough for daytime use, delivering creative energy and full-body relaxation without sedation.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 2.5,
-            "unit": "g",
-            "name_variant": "Blue Dream",
-            "price": 24.99
-        },
-        {
-            "product_name": "White Rntz x Apple Fritter | Junior | 0.75g 4-Pack Preroll",
-            "brand": "Kingroll",
-            "product_type": "Buds",
-            "lineage": "Hybrid",
-            "strain": "White Rntz x Apple Fritter",
-            "category": "Prerolls",
-            "subcategory": "Non-Infused Preroll Packs",
-            "seo_title": "White Rntz x Apple Fritter Junior 4-Pack Kingroll",
-            "description": "Candy-sweet Runtz meets warm, doughy Apple Fritter in a hybrid cross that's rich in flavor and balanced in effect. Euphoric and relaxing in equal measure, this Junior 4-pack is a dessert lover's dream spread across four smooth sessions.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 3,
-            "unit": "g",
-            "name_variant": "White Rntz x Apple Fritter",
-            "price": 36.99
+            "name_variant": "Blueberry Kickoff Haze",
+            "price": 21.99,
+            "cannabinoids": {
+                "THC": "34.17%"
+            }
         }
     ]
-
     create_product(test_list)

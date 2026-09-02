@@ -1,13 +1,27 @@
 # imports from std lib
 from datetime import datetime
 from decimal import Decimal
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import List, DefaultDict
 import uuid
 
 # imports from project
 from orders.models import Order, OrderItem, Driver
 from orders.services.state import orders_by_id, driver_id_by_order_id, drivers_by_id, active_drivers, completed_orders
+from orders.constants import get_travel_time
+
+# pick the active driver best suited to take on a stop in order_city:
+# least-loaded first (fewest current orders), then closest to order_city,
+# then lowest id for determinism when still tied
+def _pick_driver(order_city: str) -> Driver:
+    if not active_drivers:
+        raise ValueError("No active drivers available")
+    order_counts = Counter(driver_id_by_order_id.values())
+
+    def sort_key(d: Driver):
+        return (order_counts.get(d.get_id(), 0), get_travel_time(d.get_current_city(), order_city), d.get_id())
+
+    return min(active_drivers, key=sort_key)
 
 # add order and add to associated data structures
 def add_order(
@@ -20,11 +34,10 @@ def add_order(
     discount: Decimal = Decimal("0"),
     subtotal: Decimal = Decimal("0"),
     total: Decimal = Decimal("0"),
+    delivery_fee: Decimal = Decimal("0"),
     items: list = None,
 ) -> None:
-    if not active_drivers:
-        raise ValueError("No active drivers available")
-    assigned_driver: Driver = min(active_drivers, key=lambda d: d.get_id())
+    assigned_driver: Driver = _pick_driver(order_city)
 
     order = Order(
         order_id=order_id,
@@ -36,6 +49,7 @@ def add_order(
         discount=discount,
         subtotal=subtotal,
         total=total,
+        delivery_fee=delivery_fee,
     )
     order.save()
 
@@ -53,6 +67,47 @@ def add_order(
 
     orders_by_id[order_id] = order
     driver_id_by_order_id[order_id] = assigned_driver.get_id()
+
+# record a walk-in storefront sale (e.g. 3rd St pickup): no driver, no ETA, no
+# dispatch SMS — just persisted so the nightly restock digest can query it.
+# Storefront sales are complete the moment they're rung up, so mark them done
+# immediately rather than routing them through complete_order later.
+def add_storefront_order(
+    order_id: str,
+    customer_name: str,
+    order_time: datetime,
+    source: str = "",
+    discount: Decimal = Decimal("0"),
+    subtotal: Decimal = Decimal("0"),
+    total: Decimal = Decimal("0"),
+    delivery_fee: Decimal = Decimal("0"),
+    items: list = None,
+) -> None:
+    order = Order(
+        order_id=order_id,
+        customer_name=customer_name,
+        city="3rd St",
+        order_date=order_time,
+        source=source,
+        discount=discount,
+        subtotal=subtotal,
+        total=total,
+        delivery_fee=delivery_fee,
+        completed=True,
+        dispatch_sent=True,
+        is_storefront=True,
+    )
+    order.save()
+
+    if items:
+        for item in items:
+            price = Decimal(str(item.get("totalPrice", item.get("price", "0.00"))))
+            OrderItem.objects.create(
+                order=order,
+                product_name=item["variant"]["product"]["name"],
+                quantity=item["quantity"],
+                price=price,
+            )
 
 # complete order and remove from associated data structures
 def complete_order(order_id: str, city: str = "") -> None:
@@ -102,9 +157,7 @@ def complete_order(order_id: str, city: str = "") -> None:
 
 # add a shell order (city only) so driver location updates when it's completed
 def add_shell_order(city: str) -> None:
-    if not active_drivers:
-        raise ValueError("No active drivers available")
-    assigned_driver: Driver = min(active_drivers, key=lambda d: d.get_id())
+    assigned_driver: Driver = _pick_driver(city)
 
     order_id = f"shell_{uuid.uuid4().hex}"
     order = Order(

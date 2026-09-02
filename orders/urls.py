@@ -17,4 +17,11 @@ urlpatterns = [
     path("add_shell_order", views.add_shell_order_view),
     path("set_driver_location", views.set_driver_location_view),
     path("add_products_from_invoice", views.add_products_from_invoice),
+    path("send_dispatch_msg", views.send_dispatch_msg_view),
+    path("send_reschedule_msg", views.send_reschedule_msg_view),
+    path("link_order", views.link_order_view),
+    path("unlink_order", views.unlink_order_view),
+    path("pending_orders_partial", views.pending_orders_partial),
+    path("restock_partial", views.restock_partial),
+    path("clear_dispatch_queue", views.clear_dispatch_queue_view),
 ]

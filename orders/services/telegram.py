@@ -1,16 +1,38 @@
-import asyncio
-from pyrogram import Client
+# imports from std lib
+import logging
+import os
 
-app = Client(
-    "my_account",
-    api_id=38023056,
-    api_hash="e42f8c286585e81dbf8f4dda0f39afb9"
-)
+# imports from third party
+import requests
 
-async def main():
-    async with app:
+logger = logging.getLogger(__name__)
 
-        await app.send_message(chat_id="Test Channel", text="testing")
+_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
+
+
+def send_telegram_message(text: str) -> None:
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    if not token or not chat_id:
+        logger.error("send_telegram_message: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set")
+        return
+
+    try:
+        response = requests.post(
+            _API_URL.format(token=token),
+            data={"chat_id": chat_id, "text": text},
+            timeout=10,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        # Telegram's error responses carry a human-readable "description"
+        # field (e.g. "Bad Request: chat not found") that requests' default
+        # exception string doesn't include — log the raw body too.
+        detail = getattr(e.response, "text", "") if getattr(e, "response", None) is not None else ""
+        logger.error("send_telegram_message: failed to send: %s | response: %s", e, detail)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    from dotenv import load_dotenv
+    load_dotenv()
+    send_telegram_message("testing")

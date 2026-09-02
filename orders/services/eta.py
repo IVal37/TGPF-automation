@@ -42,12 +42,14 @@ def get_eta(order_id: str):
     real_order_count = sum(1 for oid in orders_by_id if not oid.startswith("shell_"))
     window_mins: int = 90 if real_order_count > 5 else 60
 
-    # slide the anchor from window-start (1st order) toward window-middle (later orders)
-    # so later customers see a tighter, more accurate window rather than a padded one
-    total = len(orders_in_order)
-    position = orders_in_order.index(order_id) if order_id in orders_in_order else 0
-    anchor_fraction = 0.0 if total <= 1 else min(0.5, position / (total - 1) * 0.5)
-    start_timestamp = clamp_to_opening(round_time(clamped_eta - timedelta(minutes=window_mins * anchor_fraction)))
+    # slide the anchor from window-start (1st stop on the route) toward window-middle (later stops)
+    # so later customers see a tighter, more accurate window rather than a padded one.
+    # the shift is capped by the *actual* travel minutes since the front of the route, so it can
+    # never outrun the real gap between stops and invert/collapse two orders' windows
+    first_order_minutes = get_eta_minutes(driver_location, orders_in_order, orders_in_order[0]) if orders_in_order else 0
+    minutes_since_front = max(0, minutes_to_order - first_order_minutes)
+    anchor_shift = min(window_mins * 0.5, minutes_since_front)
+    start_timestamp = clamp_to_opening(round_time(clamped_eta - timedelta(minutes=anchor_shift)))
     end_timestamp = start_timestamp + timedelta(minutes=window_mins)
 
     order.set_etas(start_timestamp, end_timestamp)

@@ -1,0 +1,62 @@
+{% if pending_orders %}
+  {% for item in pending_orders %}
+    <div class="dispatch-card{% if item.past_closing %} past-closing{% endif %}">
+      <div class="dispatch-header">
+        <span class="dispatch-name">
+          {{ item.order.customer_name }}
+          {% if item.past_closing %}<span class="past-closing-flag">PAST CLOSING</span>{% endif %}
+        </span>
+        <span class="dispatch-city">{{ item.order.city }}</span>
+      </div>
+      <div class="dispatch-suggested">System suggested: {{ item.eta_start_value }}&ndash;{{ item.eta_end_value }}</div>
+
+      {% if item.linked_companion %}
+        <div class="dispatch-linked">
+          <span>+ linked: {{ item.linked_companion.customer_name }} ({{ item.linked_companion.order_id }})</span>
+          <form method="post" action="/unlink_order" class="dispatch-inline-form">
+            {% csrf_token %}
+            <input type="hidden" name="order_id" value="{{ item.linked_companion.order_id }}">
+            <button class="btn-unlink" type="submit">Unlink</button>
+          </form>
+        </div>
+      {% endif %}
+
+      <form method="post" action="/send_dispatch_msg" class="dispatch-form">
+        {% csrf_token %}
+        <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
+        <div class="dispatch-field">
+          <label for="start_{{ item.order.order_id }}">ETA start</label>
+          <input type="time" step="900" id="start_{{ item.order.order_id }}" name="eta_start" value="{{ item.eta_start_value }}">
+        </div>
+        <div class="dispatch-field">
+          <label for="end_{{ item.order.order_id }}">ETA end</label>
+          <input type="time" step="900" id="end_{{ item.order.order_id }}" name="eta_end" value="{{ item.eta_end_value }}">
+        </div>
+        <button class="btn-action" type="submit">Send</button>
+      </form>
+
+      {% if item.past_closing %}
+        <form method="post" action="/send_reschedule_msg" class="dispatch-actions">
+          {% csrf_token %}
+          <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
+          <button class="btn-reschedule" type="submit">Send Reschedule Instead</button>
+        </form>
+      {% endif %}
+
+      {% if item.is_fsa_fsm and item.link_targets %}
+        <form method="post" action="/link_order" class="dispatch-actions">
+          {% csrf_token %}
+          <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
+          <select name="primary_order_id">
+            {% for target in item.link_targets %}
+              <option value="{{ target.order_id }}">{{ target.customer_name }} &mdash; {{ target.city }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn-link" type="submit">Link (2nd part of legal-limit split)</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% else %}
+  <p class="empty">No orders awaiting approval.</p>
+{% endif %}
