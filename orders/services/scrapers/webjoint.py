@@ -626,8 +626,20 @@ def set_webhooks(base_url: str) -> None:
             order_cancel_hook_input.clear()
             order_cancel_hook_input.send_keys(cancel_order_url)
 
-            save_changes_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div/div[16]/div[1]/button')))
-            save_changes_button.click()
+            time.sleep(1)
+
+            # match by button text — the old positional XPath (form/div/div[16]/div[1]/button)
+            # broke whenever the settings form layout shifted by a div
+            save_changes_button = wait.until(EC.element_to_be_clickable((
+                By.XPATH,
+                '//button[contains(translate(., "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "save changes")]',
+            )))
+            driver.execute_script("arguments[0].scrollIntoView({block:'center'});", save_changes_button)
+            time.sleep(1)
+            try:
+                save_changes_button.click()
+            except Exception:
+                driver.execute_script("arguments[0].click();", save_changes_button)
             logger.info("set_webhooks: saved — new_order=%s complete_order=%s", new_order_url, complete_order_url)
         except Exception as e:
             logger.error("set_webhooks: failed to set or save webhook URLs: %s", e)
@@ -649,69 +661,5 @@ if __name__ == "__main__":
     #pull_from_chiles()
     #dispatch_to_driver()
 
-    test_list = [
-        {
-            "product_name": "Artic Mintz Ice | Platinum | Diamond Infused | 1.65g Blunt",
-            "brand": "El Blunto",
-            "product_type": "Buds",
-            "lineage": "Sativa",
-            "strain": "Artic Mintz Ice",
-            "category": "Prerolls",
-            "subcategory": "Blunts | Infused & Non-Infused",
-            "seo_title": "Artic Mintz Ice Blunt El Blunto",
-            "description": "Cool mint and icy freshness meet a bright, uplifting sativa effect — Artic Mintz Ice is a crisp, clean blunt with a refreshing terpene profile and a smooth, energizing high that hits from the first light to the last draw.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 1.65,
-            "unit": "g",
-            "name_variant": "Artic Mintz Ice",
-            "price": 21.99,
-            "cannabinoids": {
-                "THC": "44.7%"
-            }
-        },
-        {
-            "product_name": "Strawnana Frost | Platinum | Diamond Infused | 1.65g Blunt",
-            "brand": "El Blunto",
-            "product_type": "Buds",
-            "lineage": "Hybrid",
-            "strain": "Strawnana Frost",
-            "category": "Prerolls",
-            "subcategory": "Blunts | Infused & Non-Infused",
-            "seo_title": "Strawnana Frost Blunt El Blunto",
-            "description": "Sweet strawberry and ripe banana meet a cool, frosty finish — Strawnana Frost is a smooth, fruit-forward hybrid blunt with a balanced, easygoing effect that's as flavorful as it is satisfying.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 1.65,
-            "unit": "g",
-            "name_variant": "Strawnana Frost",
-            "price": 21.99,
-            "cannabinoids": {
-                "THC": "43.4%"
-            }
-        },
-        {
-            "product_name": "Blueberry Kickoff Haze | Platinum | Diamond Infused | 1.65g Blunt",
-            "brand": "El Blunto",
-            "product_type": "Buds",
-            "lineage": "Indica",
-            "strain": "Blueberry Kickoff Haze",
-            "category": "Prerolls",
-            "subcategory": "Blunts | Infused & Non-Infused",
-            "seo_title": "Blueberry Kickoff Haze Blunt El Blunto",
-            "description": "Rich blueberry and hazy earthiness combine in a deeply relaxing indica blunt that hits hard and finishes smooth. Blueberry Kickoff Haze is a bold, flavorful smoke built for serious downtime.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 1.65,
-            "unit": "g",
-            "name_variant": "Blueberry Kickoff Haze",
-            "price": 21.99,
-            "cannabinoids": {
-                "THC": "34.17%"
-            }
-        }
-    ]
-    create_product(test_list)
+    #test_list = []
+    #create_product(test_list)
