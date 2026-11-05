@@ -1,8 +1,6 @@
-# imports from std lib
-from decimal import Decimal
-
 # imports from project
-from orders.services.dispatch import get_effective_total
+from orders.constants import CARD_FEE_MULTIPLIER
+from orders.services.dispatch import get_effective_total, is_weedmaps_source
 from orders.services.money import round_money
 from orders.services.time import format_time
 
@@ -11,9 +9,9 @@ from orders.services.time import format_time
 # responsible for passing an order whose fields reflect the final, approved
 # state (e.g. re-fetched from the DB after a dispatcher edits the ETA window).
 def get_order_notes(order):
-    is_wm = order.source not in ("POS", "Website")
+    is_wm = is_weedmaps_source(order.source)
     payment_type = order.payment_type
-    debit_total = round_money(get_effective_total(order) * Decimal("1.03"))
+    debit_total = round_money(get_effective_total(order) * CARD_FEE_MULTIPLIER)
 
     if payment_type == "Cash":
         first_line = "WM says cash" if is_wm else "cash"

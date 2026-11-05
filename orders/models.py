@@ -4,6 +4,9 @@ from datetime import datetime
 # imports from django
 from django.db import models
 
+# imports from project
+from orders.services.time import format_time
+
 
 class Driver(models.Model):
     name = models.CharField(max_length=255)
@@ -75,9 +78,7 @@ class Order(models.Model):
 
     def __str__(self):
         if self.eta_start and self.eta_end:
-            start = self.eta_start.strftime("%-I:%M")
-            end = self.eta_end.strftime("%-I:%M")
-            return f"{start}-{end}"
+            return f"{format_time(self.eta_start)}-{format_time(self.eta_end)}"
         return f"Order {self.order_id}"
 
 

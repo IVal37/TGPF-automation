@@ -2,16 +2,17 @@
 from random import choice
 from decimal import Decimal
 from datetime import datetime
-from typing import List
 
 # imports from project
 from orders.models import Order
 from orders.services.money import round_money
 from orders.services.eta import get_eta
-from orders.services.time import format_time
+from orders.services.time import format_time, parse_webhook_time
 from orders.services.state import orders_by_id
 from orders.services.hours import closing_dt
-from orders.constants import CITY_MINS, FSA_FSM_NAMES, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS
+from orders.constants import (
+    CARD_FEE_MULTIPLIER, CITY_MINS, DIRECT_SOURCES, FSA_FSM_NAMES, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS,
+)
 
 # is this the "Frank Sinatra Adult"/"Frank Sinatra Medical" placeholder
 # account? (either a legal-limit split's second order, or an unrelated lazy
@@ -19,19 +20,35 @@ from orders.constants import CITY_MINS, FSA_FSM_NAMES, MERCHANT_PAY_CUSTOMERS, V
 def is_fsa_fsm(customer_name: str) -> bool:
     return customer_name.strip().lower() in FSA_FSM_NAMES
 
+def is_merchant_pay_customer(name: str, last_name: str) -> bool:
+    return f"{name} {last_name}" in MERCHANT_PAY_CUSTOMERS
+
+# did this order come through Weedmaps rather than our own POS/website?
+def is_weedmaps_source(source: str) -> bool:
+    return source not in DIRECT_SOURCES
+
+# splits a full customer name into capitalized (first, last); last is "" for
+# single-word names
+def split_name(full_name: str):
+    parts = full_name.split()
+    name = parts[0].capitalize() if parts else ""
+    last_name = parts[1].capitalize() if len(parts) > 1 else ""
+    return name, last_name
+
 # gets relevant items from full JSON dict
 # @params:
 #   full_dict - JSON dict from order
 # @returns:
 #   ret_dict - dict with values to be used
 def extract_msg_info(full_dict):
+    name, last_name = split_name(full_dict["customer"]["name"])
     ret_dict = {
         "id": str(full_dict["id"]),
         "time": datetime.now(),
         "city": full_dict["shipping"]["city"],
 
-        "name": full_dict["customer"]["name"].split()[0].capitalize(),
-        "last_name": (full_dict["customer"]["name"].split()[1].capitalize() if len(full_dict["customer"]["name"].split()) > 1 else ""),
+        "name": name,
+        "last_name": last_name,
 
         "phone": full_dict["customer"]["phone"][1:],
 
@@ -57,21 +74,15 @@ def extract_msg_info(full_dict):
 # @returns:
 #   ret_msg - message to be sent to customer
 def get_dispatch_msg(dict):
-    city = dict["city"]
-    city_min = CITY_MINS.get(city, Decimal("0.00"))
-        
-    calculated_min_for_order = CalculateForMinCheck(dict)
+    if is_under_min(dict):
+        return under_min_msg(dict, _city_min(dict), CalculateForMinCheck(dict))
+    return normal_dispatch_msg(dict)
 
-    if calculated_min_for_order > city_min:
-        ret_msg = normal_dispatch_msg(dict)
-    else:
-        ret_msg = under_min_msg(dict, city_min, calculated_min_for_order)
-
-    return ret_msg
+def _city_min(dict):
+    return CITY_MINS.get(dict["city"], Decimal("0.00"))
 
 def is_under_min(dict):
-    city_min = CITY_MINS.get(dict["city"], Decimal("0.00"))
-    return CalculateForMinCheck(dict) <= city_min
+    return CalculateForMinCheck(dict) <= _city_min(dict)
 
 # calculate total used for minimum check
 # @params:
@@ -96,10 +107,10 @@ def normal_dispatch_msg(dict):
     early_eta, late_eta = get_eta(dict["id"])
 
     if dict.get("delivery_timing") == "Scheduled" and dict.get("scheduled_end"):
-        sched_end_dt = datetime.fromisoformat(dict["scheduled_end"].replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
+        sched_end_dt = parse_webhook_time(dict["scheduled_end"])
         order = orders_by_id[dict["id"]]
         if order.eta_end <= sched_end_dt:
-            sched_start_dt = datetime.fromisoformat(dict["scheduled_start"].replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
+            sched_start_dt = parse_webhook_time(dict["scheduled_start"])
             order.set_etas(sched_start_dt, sched_end_dt)
             early_eta = format_time(sched_start_dt)
             late_eta = format_time(sched_end_dt)
@@ -125,7 +136,7 @@ def render_dispatch_msg(name, last_name, discount, total, payment_type, early_et
 
     card_fee_text = "" if payment_type in ("Cash", "Merchant Pay - ACH") else "including card fee "
 
-    merch_pay_used_bool = True if (name + ' ' + last_name) in MERCHANT_PAY_CUSTOMERS else False
+    merch_pay_used_bool = is_merchant_pay_customer(name, last_name)
     merch_pay_fee_text = "including Merchant Pay fee " if merch_pay_used_bool else ""
     merch_pay_used_text = "I will send over your merchant pay link in a moment. " if merch_pay_used_bool else ""
 
@@ -139,14 +150,6 @@ def render_dispatch_msg(name, last_name, discount, total, payment_type, early_et
     )
 
     return dispatch_msg
-
-# splits an Order's customer_name into (first, last) the same way
-# extract_msg_info does for the original webhook payload
-def _split_customer_name(order):
-    parts = order.customer_name.split()
-    name = parts[0].capitalize() if parts else ""
-    last_name = parts[1].capitalize() if len(parts) > 1 else ""
-    return name, last_name
 
 # returns the total actually owed for an order, accounting for a legal-limit
 # split: if another order is linked to this one (a companion FSA/FSM order —
@@ -170,7 +173,7 @@ def get_effective_total(order) -> Decimal:
 # @returns:
 #   dispatch_msg - message to send customer with the approved ETA window
 def build_dispatch_msg_from_order(order) -> str:
-    name, last_name = _split_customer_name(order)
+    name, last_name = split_name(order.customer_name)
     return render_dispatch_msg(
         name, last_name, order.discount, get_effective_total(order), order.payment_type,
         format_time(order.eta_start), format_time(order.eta_end),
@@ -185,7 +188,7 @@ def build_dispatch_msg_from_order(order) -> str:
 # @returns:
 #   reschedule_msg - message offering to cancel or reschedule for the morning
 def build_reschedule_msg_from_order(order) -> str:
-    name, _ = _split_customer_name(order)
+    name, _ = split_name(order.customer_name)
     close_time = closing_dt(order.eta_start)
     close_str = f"{close_time.hour % 12 or 12}pm"
 
@@ -222,21 +225,6 @@ def under_min_msg(dict, city_min, order_min_amount):
 
     return under_min_msg
 
-# create text to be placed in file for dispatcher records
-# @params:
-#   phone_num - customer phone number to send message to
-#   msg_text - message to be sent to customer
-#   items - list of items customer purchased
-# @returns:
-#   msg_str - full text to write in file
-def get_dispatch_info(phone_num: str, msg_text: str, order_notes_text: str, items: List[str], item_num: int): 
-    msg_str = f"{phone_num}\n\n{msg_text}\n\n{order_notes_text}\n\nItems Purchased ({item_num}): \n"
-    for item in items:
-        append_str = '\t' + item + '\n' 
-        msg_str += append_str
-    
-    return msg_str
-
 # adjust total based on chosen payment type
 # send external payment link if needed
 # @params:
@@ -251,7 +239,7 @@ def get_adjusted_total(base_total, payment_type):
         #send_merch_pay(base_total)
         ret_total = base_total + (base_total * Decimal("0.0225")) + Decimal("0.35")
     else:
-        ret_total = base_total * Decimal("1.03")
+        ret_total = base_total * CARD_FEE_MULTIPLIER
     
     return Decimal(ret_total)
 

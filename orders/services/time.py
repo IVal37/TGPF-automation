@@ -1,5 +1,10 @@
 # imports from std lib
-from datetime import timedelta
+from datetime import datetime, timedelta
+
+# converts a WebJoint webhook ISO timestamp (UTC, "Z"-suffixed) to the naive
+# local wall-clock time used everywhere else (USE_TZ=False, hours.py, etc.)
+def parse_webhook_time(iso_str: str) -> datetime:
+    return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
 
 # round datetime to the next of some interval of minutes
 # @params:
