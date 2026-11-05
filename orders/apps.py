@@ -28,11 +28,11 @@ class OrdersConfig(AppConfig):
     def _load_active_drivers(self):
         try:
             from orders.models import Driver, Order
-            from orders.services.state import active_drivers, drivers_by_id, orders_by_id, driver_id_by_order_id
+            from orders.services.state import active_drivers, orders_by_id, driver_id_by_order_id
+            from orders.services.engine import track_active_driver
             from django.utils import timezone
             for driver in Driver.objects.filter(is_active=True):
-                active_drivers.append(driver)
-                drivers_by_id[driver.get_id()] = driver
+                track_active_driver(driver)
             today = timezone.now().date()
             for driver in active_drivers:
                 driver.current_city = "Davis"

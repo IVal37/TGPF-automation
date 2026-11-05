@@ -8,6 +8,13 @@ _SAME_CITY_TRAVEL_TIME = 15
 _DELIVERY_TIME = 5
 _BUFFER_TIME = 10
 
+# card / tap-to-pay orders are charged a 3% fee on top of the total
+CARD_FEE_MULTIPLIER = Decimal("1.03")
+
+# order sources that come straight from our own channels; anything else
+# (e.g. "External") is a Weedmaps order
+DIRECT_SOURCES = ("POS", "Website")
+
 CITY_MINS = {
     "American Canyon": Decimal("125.00"),
     "Brooks": Decimal("200.00"),

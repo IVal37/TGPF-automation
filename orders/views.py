@@ -14,7 +14,8 @@ from django.conf import settings
 from orders.models import Driver, Order
 from orders.services.dispatch import (
     build_dispatch_msg_from_order, build_reschedule_msg_from_order,
-    extract_msg_info, get_dispatch_msg, is_fsa_fsm, is_under_min,
+    extract_msg_info, get_dispatch_msg, is_fsa_fsm, is_merchant_pay_customer,
+    is_under_min, is_weedmaps_source,
 )
 from orders.services.scrapers.weedmaps import get_wm_payment_type
 from orders.services.note import get_order_notes
@@ -23,18 +24,24 @@ from orders.tasks import (
     pull_from_chiles_task, send_merchant_pay_link_task, send_message_task,
 )
 from orders.services.invoice import extract_products_from_invoice
-from orders.constants import BLOCKED_ADDRESSES, CITY_MINS, MERCHANT_PAY_CUSTOMERS
+from orders.services.time import parse_webhook_time
+from orders.constants import BLOCKED_ADDRESSES, CITY_MINS
 from orders.services.hours import is_past_closing
 from orders.services.engine import (
     add_driver, add_order, add_shell_order, add_storefront_order,
     cancel_order, complete_order, delete_driver,
 )
-from orders.services.state import active_drivers, completed_orders, drivers_by_id, orders_by_id, restock_items
+from orders.services.state import active_drivers, completed_orders, drivers_by_id, restock_items
+
+# orders with a real ETA window still waiting on a dispatcher to approve/send
+def _pending_queryset():
+    return Order.objects.filter(completed=False, dispatch_sent=False, eta_start__isnull=False)
+
+def _mark_dispatch_sent(order_id: str) -> None:
+    Order.objects.filter(order_id=order_id).update(dispatch_sent=True)
 
 def _pending_orders():
-    orders_list = list(Order.objects.filter(
-        completed=False, dispatch_sent=False, eta_start__isnull=False,
-    ).order_by('eta_start'))
+    orders_list = list(_pending_queryset().order_by('eta_start'))
     result = []
     for order in orders_list:
         order_is_fsa_fsm = is_fsa_fsm(order.customer_name)
@@ -76,9 +83,7 @@ def clear_dispatch_queue_view(request):
     texting anyone or writing any WebJoint notes — a cleanup/testing utility,
     not a bulk-send. Real pending orders cleared this way never get their
     dispatch SMS, so the frontend confirms before submitting."""
-    Order.objects.filter(
-        completed=False, dispatch_sent=False, eta_start__isnull=False,
-    ).update(dispatch_sent=True)
+    _pending_queryset().update(dispatch_sent=True)
     return redirect("/")
 
 def order_list(request):
@@ -139,41 +144,32 @@ def new_order(request):
     if delivery_key in BLOCKED_ADDRESSES and not is_third_st:
         return JsonResponse({"status": "ok"})
 
-    order_id = str(data["id"])
-    customer_name = data["customer"]["name"]
-    order_time = datetime.fromisoformat(data["created"].replace("Z", "+00:00")).astimezone().replace(tzinfo=None)
-    source = data.get("source", "")
-    discount = Decimal(str(data.get("discount", "0")))
-    subtotal = Decimal(str(data.get("subtotal", "0")))
-    total = Decimal(str(data.get("total", "0")))
-    delivery_fee = _extract_delivery_fee(data)
-    items = data.get("details", [])
+    # fields shared by storefront and delivery orders
+    order_fields = dict(
+        order_id=str(data["id"]),
+        customer_name=data["customer"]["name"],
+        order_time=parse_webhook_time(data["created"]),
+        source=data.get("source", ""),
+        discount=Decimal(str(data.get("discount", "0"))),
+        subtotal=Decimal(str(data.get("subtotal", "0"))),
+        total=Decimal(str(data.get("total", "0"))),
+        delivery_fee=_extract_delivery_fee(data),
+        items=data.get("details", []),
+    )
 
     if is_third_st:
         # walk-in storefront pickup — no driver, no ETA, no dispatch SMS; just
         # persisted so the nightly 3rd St restock digest can pick it up
-        add_storefront_order(
-            order_id=order_id, customer_name=customer_name, order_time=order_time,
-            source=source, discount=discount, subtotal=subtotal, total=total,
-            delivery_fee=delivery_fee, items=items,
-        )
+        add_storefront_order(**order_fields)
         return JsonResponse({"status": "ok"})
 
     add_order(
         order_city=data["shipping"]["city"],
-        order_id=order_id,
-        customer_name=customer_name,
-        order_time=order_time,
         customer_phone=data["customer"]["phone"][1:],
-        source=source,
-        discount=discount,
-        subtotal=subtotal,
-        total=total,
-        delivery_fee=delivery_fee,
-        items=items,
+        **order_fields,
     )
     msg_dict = extract_msg_info(data)
-    if msg_dict["source"] not in ("POS", "Website") and not settings.RESTOCK_TEST_MODE:
+    if is_weedmaps_source(msg_dict["source"]) and not settings.RESTOCK_TEST_MODE:
         msg_dict["pay_type"] = get_wm_payment_type()
     # always computed: sets order.eta_start/eta_end via get_eta (including any
     # scheduled-order override) and routes under-min vs normal internally. For
@@ -192,19 +188,18 @@ def new_order(request):
             if not no_text:
                 send_message_task.delay(msg_dict["phone"], dispatch_msg)
             fill_order_notes_task.delay("reached out about under min")
-            Order.objects.filter(order_id=msg_dict["id"]).update(dispatch_sent=True)
+            _mark_dispatch_sent(msg_dict["id"])
         elif no_text:
             # excluded customer: we never text them, so there's nothing to hold
             # for approval — write notes with the system-computed window now
             order = Order.objects.get(order_id=msg_dict["id"])
             fill_order_notes_task.delay(get_order_notes(order))
-            Order.objects.filter(order_id=msg_dict["id"]).update(dispatch_sent=True)
+            _mark_dispatch_sent(msg_dict["id"])
         # else: normal dispatch with a real ETA window — leave dispatch_sent=False
         # so it shows up in the Dispatch Queue tab for a human to approve/edit
         # and send (see send_dispatch_msg_view / send_reschedule_msg_view below).
 
-        is_merch_pay_customer = f'{msg_dict["name"]} {msg_dict["last_name"]}' in MERCHANT_PAY_CUSTOMERS
-        if is_merch_pay_customer and not under_min:
+        if is_merchant_pay_customer(msg_dict["name"], msg_dict["last_name"]) and not under_min:
             send_merchant_pay_link_task.delay()
 
         pull_from_chiles_task.delay()
@@ -230,7 +225,7 @@ def send_dispatch_msg_view(request):
         send_message_task.delay(order.customer_phone, build_dispatch_msg_from_order(order))
         fill_order_notes_task.delay(get_order_notes(order))
 
-    Order.objects.filter(order_id=order_id).update(dispatch_sent=True)
+    _mark_dispatch_sent(order_id)
     return redirect("/")
 
 @csrf_exempt
@@ -243,7 +238,7 @@ def send_reschedule_msg_view(request):
         send_message_task.delay(order.customer_phone, build_reschedule_msg_from_order(order))
         fill_order_notes_task.delay("reached out about rescheduling for tomorrow morning")
 
-    Order.objects.filter(order_id=order_id).update(dispatch_sent=True)
+    _mark_dispatch_sent(order_id)
     return redirect("/")
 
 @csrf_exempt

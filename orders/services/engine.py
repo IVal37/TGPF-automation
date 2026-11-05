@@ -2,7 +2,7 @@
 from datetime import datetime
 from decimal import Decimal
 from collections import Counter, defaultdict
-from typing import List, DefaultDict
+from typing import List, DefaultDict, Optional
 import uuid
 
 # imports from project
@@ -22,6 +22,56 @@ def _pick_driver(order_city: str) -> Driver:
         return (order_counts.get(d.get_id(), 0), get_travel_time(d.get_current_city(), order_city), d.get_id())
 
     return min(active_drivers, key=sort_key)
+
+# persist a webhook's "details" line items against an already-saved order
+def _save_items(order: Order, items: list) -> None:
+    for item in items or []:
+        price = Decimal(str(item.get("totalPrice", item.get("price", "0.00"))))
+        OrderItem.objects.create(
+            order=order,
+            product_name=item["variant"]["product"]["name"],
+            quantity=item["quantity"],
+            price=price,
+        )
+
+# hand an already-saved order to a driver and start tracking it in memory
+def _assign_order(order: Order, driver: Driver) -> None:
+    driver.add_order(order)
+    orders_by_id[order.order_id] = order
+    driver_id_by_order_id[order.order_id] = driver.get_id()
+
+# stop tracking an order in memory; returns the driver it was assigned to
+def _untrack_order(order_id: str) -> int:
+    orders_by_id.pop(order_id)
+    return driver_id_by_order_id.pop(order_id)
+
+# mark an order finished in the DB (used for completes, cancels, and shells)
+def _close_order_in_db(order_id: str) -> None:
+    Order.objects.filter(order_id=order_id).update(completed=True, driver=None)
+
+def _move_driver(driver_id: int, city: str) -> None:
+    if driver_id in drivers_by_id:
+        drivers_by_id[driver_id].set_current_city(city)
+
+# first tracked shell order in `city`, optionally only among one driver's orders
+def _find_shell(city: str, driver_id: Optional[int] = None) -> Optional[str]:
+    return next(
+        (oid for oid in list(orders_by_id)
+         if oid.startswith("shell_") and orders_by_id[oid].get_city() == city
+         and (driver_id is None or driver_id_by_order_id.get(oid) == driver_id)),
+        None
+    )
+
+def _drop_from_active_pool(driver_id: int) -> None:
+    for idx, d in enumerate(active_drivers):
+        if d.get_id() == driver_id:
+            active_drivers.pop(idx)
+            break
+
+# put a Driver instance into the in-memory active pool (no DB write)
+def track_active_driver(driver: Driver) -> None:
+    active_drivers.append(driver)
+    drivers_by_id[driver.get_id()] = driver
 
 # add order and add to associated data structures
 def add_order(
@@ -52,21 +102,8 @@ def add_order(
         delivery_fee=delivery_fee,
     )
     order.save()
-
-    if items:
-        for item in items:
-            price = Decimal(str(item.get("totalPrice", item.get("price", "0.00"))))
-            OrderItem.objects.create(
-                order=order,
-                product_name=item["variant"]["product"]["name"],
-                quantity=item["quantity"],
-                price=price,
-            )
-
-    assigned_driver.add_order(order)
-
-    orders_by_id[order_id] = order
-    driver_id_by_order_id[order_id] = assigned_driver.get_id()
+    _save_items(order, items)
+    _assign_order(order, assigned_driver)
 
 # record a walk-in storefront sale (e.g. 3rd St pickup): no driver, no ETA, no
 # dispatch SMS — just persisted so the nightly restock digest can query it.
@@ -98,16 +135,7 @@ def add_storefront_order(
         is_storefront=True,
     )
     order.save()
-
-    if items:
-        for item in items:
-            price = Decimal(str(item.get("totalPrice", item.get("price", "0.00"))))
-            OrderItem.objects.create(
-                order=order,
-                product_name=item["variant"]["product"]["name"],
-                quantity=item["quantity"],
-                price=price,
-            )
+    _save_items(order, items)
 
 # complete order and remove from associated data structures
 def complete_order(order_id: str, city: str = "") -> None:
@@ -122,38 +150,27 @@ def complete_order(order_id: str, city: str = "") -> None:
             ],
         })
 
-    Order.objects.filter(order_id=order_id).update(completed=True, driver=None)
+    _close_order_in_db(order_id)
 
     if order_id in driver_id_by_order_id:
-        driver_id: int = driver_id_by_order_id.pop(order_id)
-        order = orders_by_id.pop(order_id)
-        city = order.get_city()
-        if driver_id in drivers_by_id:
-            drivers_by_id[driver_id].set_current_city(city)
+        city = orders_by_id[order_id].get_city()
+        driver_id = _untrack_order(order_id)
+        _move_driver(driver_id, city)
 
-        shell_id = next(
-            (oid for oid, did in driver_id_by_order_id.items()
-             if did == driver_id and oid.startswith("shell_") and orders_by_id[oid].get_city() == city),
-            None
-        )
+        # the driver has now been to this city, so one of their placeholder
+        # shells there is done too
+        shell_id = _find_shell(city, driver_id)
         if shell_id:
-            driver_id_by_order_id.pop(shell_id)
-            orders_by_id.pop(shell_id)
-            Order.objects.filter(order_id=shell_id).update(completed=True, driver=None)
+            _untrack_order(shell_id)
+            _close_order_in_db(shell_id)
 
     elif city:
         # order wasn't tracked (placed before server started) — pop matching shell
-        shell_id = next(
-            (oid for oid in list(orders_by_id)
-             if oid.startswith("shell_") and orders_by_id[oid].get_city() == city),
-            None
-        )
+        shell_id = _find_shell(city)
         if shell_id:
-            driver_id = driver_id_by_order_id.pop(shell_id)
-            orders_by_id.pop(shell_id)
-            Order.objects.filter(order_id=shell_id).update(completed=True, driver=None)
-            if driver_id in drivers_by_id:
-                drivers_by_id[driver_id].set_current_city(city)
+            driver_id = _untrack_order(shell_id)
+            _close_order_in_db(shell_id)
+            _move_driver(driver_id, city)
 
 # add a shell order (city only) so driver location updates when it's completed
 def add_shell_order(city: str) -> None:
@@ -166,46 +183,34 @@ def add_shell_order(city: str) -> None:
         order_date=datetime.now(),
     )
     order.save()
-    assigned_driver.add_order(order)
-
-    orders_by_id[order_id] = order
-    driver_id_by_order_id[order_id] = assigned_driver.get_id()
+    _assign_order(order, assigned_driver)
 
 # cancel order and remove from associated data structures (no restock capture)
 def cancel_order(order_id: str) -> None:
-    Order.objects.filter(order_id=order_id).update(completed=True, driver=None)
+    _close_order_in_db(order_id)
 
     if order_id in driver_id_by_order_id:
-        driver_id: int = driver_id_by_order_id.pop(order_id)
-        order = orders_by_id.pop(order_id)
-        if driver_id in drivers_by_id:
-            drivers_by_id[driver_id].set_current_city(order.get_city())
+        city = orders_by_id[order_id].get_city()
+        _move_driver(_untrack_order(order_id), city)
 
 # load a driver from the DB into the active pool
 def add_driver(driver_id: int) -> None:
     driver: Driver = Driver.objects.get(pk=driver_id)
     driver.is_active = True
     driver.save()
-    active_drivers.append(driver)
-    drivers_by_id[driver.get_id()] = driver
+    track_active_driver(driver)
 
 # remove driver from the active pool and reassign orders
 def remove_driver(driver_id: int) -> None:
     driver = drivers_by_id.pop(driver_id)
     driver.is_active = False
     driver.save()
-    for idx, d in enumerate(active_drivers):
-        if d.get_id() == driver_id:
-            active_drivers.pop(idx)
-            break
+    _drop_from_active_pool(driver_id)
 
 # permanently delete a driver from memory and the DB
 def delete_driver(driver_id: int) -> None:
     drivers_by_id.pop(driver_id, None)
-    for idx, d in enumerate(active_drivers):
-        if d.get_id() == driver_id:
-            active_drivers.pop(idx)
-            break
+    _drop_from_active_pool(driver_id)
     Driver.objects.filter(pk=driver_id).delete()
 
 # return a dictionary of driver id -> list of driver orders

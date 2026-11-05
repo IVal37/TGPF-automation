@@ -2,25 +2,16 @@
 import os
 import time
 
-# imports from django
-from django.conf import settings
-
 # imports from selenium
-from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
+
+# imports from project
+from orders.services.scrapers.browser import click, create_driver, fill
 
 def get_wm_payment_type():
-    opts = Options()
-    opts.add_argument("--window-size=1280,720")
-    if settings.HEADLESS:
-        opts.add_argument("--headless=new")
-
-    driver = webdriver.Chrome(options=opts)
-    wait = WebDriverWait(driver, 15)
+    driver, wait = create_driver()
 
     payment_type = "Cash"
 
@@ -29,30 +20,21 @@ def get_wm_payment_type():
 
         # intial login
         try:          
-            email = wait.until(EC.element_to_be_clickable((By.ID, "user_username")))
-            email.clear()
-            email.send_keys(os.environ.get('WEEDMAPS_EMAIL', ''))
-
-            password = wait.until(EC.element_to_be_clickable((By.ID, "user_password")))
-            password.clear()
-            password.send_keys(os.environ.get('WEEDMAPS_PASSWORD', ''))
-
-            login_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "btn.btn-signup-primary")))
-            login_button.click()
+            fill(wait, (By.ID, "user_username"), os.environ.get('WEEDMAPS_EMAIL', ''))
+            fill(wait, (By.ID, "user_password"), os.environ.get('WEEDMAPS_PASSWORD', ''))
+            click(wait, (By.CLASS_NAME, "btn.btn-signup-primary"))
         except Exception:
             pass
 
         # move to orders
         try:          
-            all_orders_button = wait.until(EC.element_to_be_clickable((By.ID ,"side-nav-orders-all-orders")))
-            all_orders_button.click()
+            click(wait, (By.ID, "side-nav-orders-all-orders"))
         except Exception:
             pass
 
         # click into most recent order
         try:
-            recent_order = wait.until(EC.element_to_be_clickable((By.XPATH , '//*[@id="__next"]/div/div[2]/div/div[3]/div[2]/div[1]/div[2]/div[1]/div[1]/span/a')))
-            recent_order.click()
+            click(wait, (By.XPATH, '//*[@id="__next"]/div/div[2]/div/div[3]/div[2]/div[1]/div[2]/div[1]/div[1]/span/a'))
         except Exception:
             pass
 

@@ -2,66 +2,34 @@
 import os
 import time
 
-# imports from django
-from django.conf import settings
-
 # imports from selenium
-from selenium import webdriver
 from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
 
-BLOCK = 2
+# imports from project
+from orders.services.scrapers.browser import BLOCK, click, create_driver, fill
 
 def send_message(customer_number: str, dispatch_msg: str):
-    prefs = {
-        "profile.default_content_setting_values.media_stream_mic": BLOCK
-    }
-    opts = Options()
-    opts.add_experimental_option("prefs", prefs)
-    opts.add_argument("--window-size=1280,720")
-    if settings.HEADLESS:
-        opts.add_argument("--headless=new")
-
-    driver = webdriver.Chrome(options=opts)
-    wait = WebDriverWait(driver, 15)
+    driver, wait = create_driver({"profile.default_content_setting_values.media_stream_mic": BLOCK})
 
     try:
         driver.get("https://my.talkroute.com/home/text_messages/")
 
         # initial login
         try:
-            email = wait.until(EC.element_to_be_clickable((By.ID, "login-page-email-input")))
-            email.clear()
-            email.send_keys(os.environ.get('TALKROUTE_EMAIL', ''))
-
-            password = wait.until(EC.element_to_be_clickable((By.ID, "login-page-password-input")))
-            password.clear()
-            password.send_keys(os.environ.get('TALKROUTE_PASSWORD', ''))
-
-            login_button = wait.until(EC.element_to_be_clickable((By.ID, "login-page-login-button")))
-            login_button.click()
+            fill(wait, (By.ID, "login-page-email-input"), os.environ.get('TALKROUTE_EMAIL', ''))
+            fill(wait, (By.ID, "login-page-password-input"), os.environ.get('TALKROUTE_PASSWORD', ''))
+            click(wait, (By.ID, "login-page-login-button"))
         except Exception:
             pass
 
         # get through setup menu
         try:
-            next_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "ui.basic.icon.button.initialModalButton.modal-accept-button")))
-            next_button.click()
-
-            next_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "ui.basic.icon.button.initialModalButton.modal-accept-button")))
-            next_button.click()
-
-            terms_checkbox = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, "label[for='modal-terms-checkbox']")))
-            terms_checkbox.click()
-
-            finish_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "button.modal-accept-button:not(.initialModalButton)")))
-            finish_button.click()
-
-            ok_button = wait.until(EC.element_to_be_clickable((By.XPATH, ".//button[normalize-space()='OK']")))
-            ok_button.click()
+            click(wait, (By.CLASS_NAME, "ui.basic.icon.button.initialModalButton.modal-accept-button"))
+            click(wait, (By.CLASS_NAME, "ui.basic.icon.button.initialModalButton.modal-accept-button"))
+            click(wait, (By.CSS_SELECTOR, "label[for='modal-terms-checkbox']"))
+            click(wait, (By.CLASS_NAME, "button.modal-accept-button:not(.initialModalButton)"))
+            click(wait, (By.XPATH, ".//button[normalize-space()='OK']"))
         except Exception:
             pass
 
@@ -90,22 +58,11 @@ def send_message(customer_number: str, dispatch_msg: str):
         '''
         # send message
         try:
-            messages_button = wait.until(EC.element_to_be_clickable((By.ID, "navigation-messages-item")))
-            messages_button.click()
-
-            new_message_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/div[2]/div/div[1]/div/div[1]/div/div[1]/button')))
-            new_message_btn.click()
-
-            num_input = wait.until(EC.element_to_be_clickable((By.ID, "conversations-to-phone-number-input")))
-            num_input.clear()
-            num_input.send_keys(customer_number)
-
-            message_input = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "message-input.text-message-input")))
-            message_input.clear()
-            message_input.send_keys(dispatch_msg)
-            
-            send_button = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "message-input-send")))
-            send_button.click()
+            click(wait, (By.ID, "navigation-messages-item"))
+            click(wait, (By.XPATH, '//*[@id="root"]/div/div/div[2]/div/div[1]/div/div[1]/div/div[1]/button'))
+            fill(wait, (By.ID, "conversations-to-phone-number-input"), customer_number)
+            fill(wait, (By.CLASS_NAME, "message-input.text-message-input"), dispatch_msg)
+            click(wait, (By.CLASS_NAME, "message-input-send"))
             
             time.sleep(5)
         except Exception:
