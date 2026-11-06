@@ -1,0 +1,103 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {}
+  }
+ ],
+ [
+  "get",
+  "https://merchantpay.greenbaxmarketplace.io/login"
+ ],
+ [
+  "find_element",
+  "id",
+  "mat-input-0"
+ ],
+ [
+  "clear",
+  "id=mat-input-0"
+ ],
+ [
+  "send_keys",
+  "id=mat-input-0",
+  [
+   "fake-merchant_pay-email"
+  ]
+ ],
+ [
+  "find_element",
+  "id",
+  "mat-input-1"
+ ],
+ [
+  "clear",
+  "id=mat-input-1"
+ ],
+ [
+  "send_keys",
+  "id=mat-input-1",
+  [
+   "fake-merchant_pay-password"
+  ]
+ ],
+ [
+  "find_element",
+  "xpath",
+  "/html/body/app-root/app-login-page/app-login/app-not-auth/div/section/form/button"
+ ],
+ [
+  "click",
+  "xpath=/html/body/app-root/app-login-page/app-login/app-not-auth/div/section/form/button"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//mat-form-field[.//mat-label[normalize-space()='Authentication code']]//input"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//mat-form-field[.//mat-label[normalize-space()='Authentication code']]//input"
+  ]
+ ],
+ [
+  "clear",
+  "xpath=//mat-form-field[.//mat-label[normalize-space()='Authentication code']]//input"
+ ],
+ [
+  "send_keys",
+  "xpath=//mat-form-field[.//mat-label[normalize-space()='Authentication code']]//input",
+  [
+   "123456"
+  ]
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//button[@type='submit' and normalize-space()='Verify']"
+ ],
+ [
+  "click",
+  "xpath=//button[@type='submit' and normalize-space()='Verify']"
+ ],
+ [
+  "sleep",
+  5
+ ],
+ [
+  "quit"
+ ],
+ [
+  "return",
+  null
+ ]
+]

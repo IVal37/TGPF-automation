@@ -24,3 +24,11 @@ Before all 5, once per shell:
 
 5. Django
     python manage.py runserver
+
+Running tests (in-memory SQLite, MySQL does not need to be running):
+
+    python manage.py test orders --settings=orders.test_settings
+
+Scraper tests compare recorded browser action traces to golden files in orders/fixtures/scraper_traces/. After an intentional scraper change, rewrite them with:
+
+    UPDATE_TRACES=1 python manage.py test orders.tests_scrapers --settings=orders.test_settings

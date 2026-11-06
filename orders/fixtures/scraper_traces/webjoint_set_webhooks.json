@@ -1,0 +1,175 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {
+    "prefs": {
+     "profile.default_content_setting_values.notifications": 2
+    }
+   }
+  }
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/"
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c13",
+  [
+   "fake-webjoint-email"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c202.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c202.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c202.c13",
+  [
+   "fake-webjoint-password"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c230.c204.c206.c209.c15"
+ ],
+ [
+  "click",
+  "class name=c230.c204.c206.c209.c15"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"nav_drawer\"]/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[9]"
+ ],
+ [
+  "click",
+  "xpath=//*[@id=\"nav_drawer\"]/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[9]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"nav_drawer\"]/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[9]/div[2]/div/div/menu/a[1]"
+ ],
+ [
+  "click",
+  "xpath=//*[@id=\"nav_drawer\"]/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[9]/div[2]/div/div/menu/a[1]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"root\"]/div/div/main/div[2]/div/div/form/div/div[6]/div[1]"
+ ],
+ [
+  "click",
+  "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div/form/div/div[6]/div[1]"
+ ],
+ [
+  "find_element",
+  "id",
+  "hooks.orderSubmit"
+ ],
+ [
+  "clear",
+  "id=hooks.orderSubmit"
+ ],
+ [
+  "send_keys",
+  "id=hooks.orderSubmit",
+  [
+   "https://example.ngrok.app/new_order"
+  ]
+ ],
+ [
+  "find_element",
+  "id",
+  "hooks.orderComplete"
+ ],
+ [
+  "clear",
+  "id=hooks.orderComplete"
+ ],
+ [
+  "send_keys",
+  "id=hooks.orderComplete",
+  [
+   "https://example.ngrok.app/complete_order"
+  ]
+ ],
+ [
+  "find_element",
+  "id",
+  "hooks.orderCancel"
+ ],
+ [
+  "clear",
+  "id=hooks.orderCancel"
+ ],
+ [
+  "send_keys",
+  "id=hooks.orderCancel",
+  [
+   "https://example.ngrok.app/cancel_order"
+  ]
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//button[contains(translate(., \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \"save changes\")]"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//button[contains(translate(., \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \"save changes\")]"
+  ]
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "click",
+  "xpath=//button[contains(translate(., \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \"save changes\")]"
+ ],
+ [
+  "log",
+  "INFO",
+  "set_webhooks: saved — new_order=https://example.ngrok.app/new_order complete_order=https://example.ngrok.app/complete_order"
+ ],
+ [
+  "sleep",
+  5
+ ],
+ [
+  "quit"
+ ],
+ [
+  "return",
+  null
+ ]
+]

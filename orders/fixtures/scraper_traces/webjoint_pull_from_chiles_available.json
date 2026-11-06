@@ -1,0 +1,348 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {
+    "prefs": {
+     "profile.default_content_setting_values.notifications": 2
+    }
+   }
+  }
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/"
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c13",
+  [
+   "fake-webjoint-email"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c202.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c202.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c202.c13",
+  [
+   "fake-webjoint-password"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c230.c204.c206.c209.c15"
+ ],
+ [
+  "click",
+  "class name=c230.c204.c206.c209.c15"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+ ],
+ [
+  "click",
+  "xpath=//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"root\"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span"
+ ],
+ [
+  "click",
+  "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//tbody/tr"
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//tbody/tr"
+ ],
+ [
+  "find_element",
+  "xpath=//tbody/tr#0",
+  "xpath",
+  ".//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//tbody/tr#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+  ]
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "click",
+  "xpath=//tbody/tr#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//div[@role=\"button\" and .//*[contains(text(),\"Pulling From\")]]"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//div[@role=\"button\" and .//*[contains(text(),\"Pulling From\")]]"
+  ]
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "click",
+  "xpath=//div[@role=\"button\" and .//*[contains(text(),\"Pulling From\")]]"
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//div[@role=\"dialog\"]"
+ ],
+ [
+  "find_elements",
+  "xpath=//div[@role=\"dialog\"]",
+  "class name",
+  "c420"
+ ],
+ [
+  "find_element",
+  "css selector",
+  "div.css-1j4kz5m"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "css selector=div.css-1j4kz5m"
+  ]
+ ],
+ [
+  "sleep",
+  0.3
+ ],
+ [
+  "click",
+  "css selector=div.css-1j4kz5m"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//*[@role=\"option\" and contains(.,\"@ Chiles Rd Shop\")]"
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//*[@role=\"option\" and contains(.,\"@ Closing Shift Mobile Inventory\")]"
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//*[@role=\"option\" and contains(.,\"@ Starting Shift Mobile Inventory\")]"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "click",
+  "xpath=//*[@role=\"option\" and contains(.,\"@ Chiles Rd Shop\")]#0"
+ ],
+ [
+  "sleep",
+  1.5
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//button[contains(.,\"Save Changes\")]"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "click",
+  "xpath=//button[contains(.,\"Save Changes\")]"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//tbody/tr"
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//tbody/tr"
+ ],
+ [
+  "find_element",
+  "xpath=//tbody/tr#2",
+  "xpath",
+  ".//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//tbody/tr#2>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+  ]
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "click",
+  "xpath=//tbody/tr#2>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//div[@role=\"dialog\"]"
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//div[@role=\"dialog\"]"
+ ],
+ [
+  "find_elements",
+  "xpath=//div[@role=\"dialog\"]",
+  "class name",
+  "c420"
+ ],
+ [
+  "find_element",
+  "id",
+  "packagequantities[0].nfrompackagequantity"
+ ],
+ [
+  "execute_script",
+  "var e=arguments[0]; while(e && !e.querySelector('.c420')) e=e.parentElement; return e ? e.innerText : '';",
+  [
+   "id=packagequantities[0].nfrompackagequantity"
+  ]
+ ],
+ [
+  "find_element",
+  "id",
+  "packagequantities[1].nfrompackagequantity"
+ ],
+ [
+  "execute_script",
+  "var e=arguments[0]; while(e && !e.querySelector('.c420')) e=e.parentElement; return e ? e.innerText : '';",
+  [
+   "id=packagequantities[1].nfrompackagequantity"
+  ]
+ ],
+ [
+  "find_element",
+  "id",
+  "packagequantities[1].nfrompackagequantity"
+ ],
+ [
+  "find_element",
+  "id",
+  "packagequantities[0].nfrompackagequantity"
+ ],
+ [
+  "clear",
+  "id=packagequantities[0].nfrompackagequantity"
+ ],
+ [
+  "send_keys",
+  "id=packagequantities[0].nfrompackagequantity",
+  [
+   "5"
+  ]
+ ],
+ [
+  "sleep",
+  0.3
+ ],
+ [
+  "click",
+  "xpath=//div[@role=\"dialog\"]>class name=c420#1"
+ ],
+ [
+  "sleep",
+  1.5
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//button[contains(.,\"Save Changes\")]"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "click",
+  "xpath=//button[contains(.,\"Save Changes\")]"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "quit"
+ ],
+ [
+  "return",
+  null
+ ]
+]
