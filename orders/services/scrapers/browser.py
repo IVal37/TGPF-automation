@@ -3,6 +3,7 @@ from django.conf import settings
 
 # imports from selenium
 from selenium import webdriver
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
@@ -24,22 +25,37 @@ def create_driver(prefs: dict = None):
     if settings.HEADLESS:
         opts.add_argument("--headless=new")
     driver = webdriver.Chrome(options=opts)
-    return driver, WebDriverWait(driver, 15)
+    # React re-renders can invalidate an element mid-wait; retry instead of raising
+    return driver, WebDriverWait(
+        driver, 15,
+        ignored_exceptions=(NoSuchElementException, StaleElementReferenceException),
+    )
 
 
-# waits for an element to be clickable, then clicks it
+# waits for an element to be clickable, then clicks it (re-locating once if
+# the page re-rendered between the wait and the click)
 def click(wait, locator):
-    el = wait.until(EC.element_to_be_clickable(locator))
-    el.click()
-    return el
+    for attempt in range(3):
+        el = wait.until(EC.element_to_be_clickable(locator))
+        try:
+            el.click()
+            return el
+        except StaleElementReferenceException:
+            if attempt == 2:
+                raise
 
 
-# waits for an input to be clickable, then replaces its value
+# waits for an input to be clickable, then replaces its value (same stale retry)
 def fill(wait, locator, value):
-    el = wait.until(EC.element_to_be_clickable(locator))
-    el.clear()
-    el.send_keys(value)
-    return el
+    for attempt in range(3):
+        el = wait.until(EC.element_to_be_clickable(locator))
+        try:
+            el.clear()
+            el.send_keys(value)
+            return el
+        except StaleElementReferenceException:
+            if attempt == 2:
+                raise
 
 
 def scroll_into_view(driver, el):
