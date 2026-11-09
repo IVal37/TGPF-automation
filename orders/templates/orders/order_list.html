@@ -328,7 +328,13 @@
 </head>
 <body>
 
-  <h1>TGPF Dispatch</h1>
+  <div style="display: flex; align-items: baseline; justify-content: space-between; max-width: 700px;">
+    <h1>TGPF Dispatch</h1>
+    <form method="post" action="{% url 'logout' %}">
+      {% csrf_token %}
+      <button type="submit" class="btn-clear">Sign out ({{ request.user.get_username }})</button>
+    </form>
+  </div>
 
   <p class="section-title" style="margin-top: 0;">Startup</p>
   <div class="startup-grid">
@@ -443,8 +449,18 @@
         if (shouldSkip(container)) return;
 
         fetch(url)
-          .then(function (res) { return res.text(); })
+          .then(function (res) {
+            // session expired: fetch followed a redirect to the login page, so
+            // reload the whole page (which lands on the login form) instead of
+            // pasting a login form into the tab
+            if (res.redirected && res.url.indexOf('{% url "login" %}') !== -1) {
+              window.location.reload();
+              return null;
+            }
+            return res.text();
+          })
           .then(function (html) {
+            if (html === null) return;
             container.innerHTML = html;
             var count = container.querySelectorAll(itemSelector).length;
             badge.textContent = count;

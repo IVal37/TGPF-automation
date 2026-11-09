@@ -1,0 +1,275 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {
+    "prefs": {
+     "profile.default_content_setting_values.notifications": 2
+    }
+   }
+  }
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/"
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c13",
+  [
+   "fake-webjoint-email"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c202.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c202.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c202.c13",
+  [
+   "fake-webjoint-password"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c230.c204.c206.c209.c15"
+ ],
+ [
+  "click",
+  "class name=c230.c204.c206.c209.c15"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+ ],
+ [
+  "click",
+  "xpath=//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"root\"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span"
+ ],
+ [
+  "click",
+  "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//tbody/tr"
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//tbody/tr"
+ ],
+ [
+  "find_element",
+  "xpath=//tbody/tr#0",
+  "xpath",
+  ".//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//tbody/tr#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+  ]
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "click",
+  "xpath=//tbody/tr#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//div[@role=\"button\" and .//*[contains(text(),\"Pulling From\")]]"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//div[@role=\"button\" and .//*[contains(text(),\"Pulling From\")]]"
+  ]
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "click",
+  "xpath=//div[@role=\"button\" and .//*[contains(text(),\"Pulling From\")]]"
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//div[@role=\"dialog\"]"
+ ],
+ [
+  "find_elements",
+  "xpath=//div[@role=\"dialog\"]",
+  "class name",
+  "c420"
+ ],
+ [
+  "find_element",
+  "css selector",
+  "div.css-1j4kz5m"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "css selector=div.css-1j4kz5m"
+  ]
+ ],
+ [
+  "sleep",
+  0.3
+ ],
+ [
+  "click",
+  "css selector=div.css-1j4kz5m"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//*[@role=\"option\" and contains(.,\"@ Chiles Rd Shop\")]"
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//*[@role=\"option\" and contains(.,\"@ Closing Shift Mobile Inventory\")]"
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//*[@role=\"option\" and contains(.,\"@ Starting Shift Mobile Inventory\")]"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[text()=\"Cancel\"]"
+ ],
+ [
+  "click",
+  "xpath=//*[text()=\"Cancel\"]"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[text()=\"Inventory\"]"
+ ],
+ [
+  "click",
+  "xpath=//*[text()=\"Inventory\"]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[text()=\"Kits\"]"
+ ],
+ [
+  "click",
+  "xpath=//*[text()=\"Kits\"]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[text()=\"Closing Shift Mobile Inventory\"]"
+ ],
+ [
+  "click",
+  "xpath=//*[text()=\"Closing Shift Mobile Inventory\"]"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"root\"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/div/div/div/input"
+ ],
+ [
+  "clear",
+  "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/div/div/div/input"
+ ],
+ [
+  "send_keys",
+  "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/div/div/div/input",
+  [
+   "Item K"
+  ]
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"root\"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button"
+ ],
+ [
+  "click",
+  "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "quit"
+ ],
+ [
+  "return",
+  null
+ ]
+]

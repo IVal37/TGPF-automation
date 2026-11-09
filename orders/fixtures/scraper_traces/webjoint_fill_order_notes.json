@@ -1,0 +1,123 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {
+    "prefs": {
+     "profile.default_content_setting_values.notifications": 2
+    }
+   }
+  }
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/"
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c13",
+  [
+   "fake-webjoint-email"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c202.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c202.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c202.c13",
+  [
+   "fake-webjoint-password"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c230.c204.c206.c209.c15"
+ ],
+ [
+  "click",
+  "class name=c230.c204.c206.c209.c15"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+ ],
+ [
+  "click",
+  "xpath=//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"root\"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span"
+ ],
+ [
+  "click",
+  "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//p[contains(translate(text(), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \"order notes\")]/button"
+ ],
+ [
+  "click",
+  "xpath=//p[contains(translate(text(), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \"order notes\")]/button"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]"
+ ],
+ [
+  "clear",
+  "xpath=/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]"
+ ],
+ [
+  "send_keys",
+  "xpath=/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]",
+  [
+   "test note\nold note"
+  ]
+ ],
+ [
+  "find_element",
+  "xpath",
+  "/html/body/div[4]/div[2]/div[2]/form/div[2]/button"
+ ],
+ [
+  "click",
+  "xpath=/html/body/div[4]/div[2]/div[2]/form/div[2]/button"
+ ],
+ [
+  "sleep",
+  2
+ ],
+ [
+  "quit"
+ ],
+ [
+  "return",
+  null
+ ]
+]

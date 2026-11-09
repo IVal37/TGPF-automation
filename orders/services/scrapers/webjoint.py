@@ -19,6 +19,7 @@ from selenium.common.exceptions import TimeoutException
 from orders.services.scrapers.browser import (
     BLOCK, ci_contains, click, click_with_js_fallback, create_driver, fill, scroll_into_view,
 )
+from orders.webhooks import redact_webhook_key, webhook_urls
 
 _WEBJOINT_URL = "https://order.thegoodpeoplefarms.com/admin/index.html#/"
 
@@ -555,9 +556,11 @@ def create_product(driver, wait, product_dicts: List[Dict[str, str]]):
 
 @_webjoint_session
 def set_webhooks(driver, wait, base_url: str) -> None:
-    new_order_url = base_url + "/new_order"
-    complete_order_url = base_url + "/complete_order"
-    cancel_order_url = base_url + "/cancel_order"
+    # the three webhook routes live under a secret path segment (WEBHOOK_SECRET)
+    urls = webhook_urls(base_url)
+    new_order_url = urls["new_order"]
+    complete_order_url = urls["complete_order"]
+    cancel_order_url = urls["cancel_order"]
 
     try:
         click(wait, (By.XPATH, '//*[@id="nav_drawer"]/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[9]'))
@@ -582,7 +585,10 @@ def set_webhooks(driver, wait, base_url: str) -> None:
         scroll_into_view(driver, save_changes_button)
         time.sleep(1)
         click_with_js_fallback(driver, save_changes_button)
-        logger.info("set_webhooks: saved — new_order=%s complete_order=%s", new_order_url, complete_order_url)
+        logger.info(
+            "set_webhooks: saved — new_order=%s complete_order=%s",
+            redact_webhook_key(new_order_url), redact_webhook_key(complete_order_url),
+        )
     except Exception as e:
         logger.error("set_webhooks: failed to set or save webhook URLs: %s", e)
 
@@ -630,60 +636,22 @@ if __name__ == "__main__":
 
     test_list = [
         {
-            "product_name": "Tropical Punch | 510 Cartridge",
-            "brand": "Chico Verde",
+            "product_name": "Beach Party | Refined Live Resin | All-In-One",
+            "brand": "Raw Garden",
             "product_type": "Concentrate",
-            "lineage": "Indica",
-            "strain": "Tropical Punch",
-            "category": "Cartridges",
-            "subcategory": "Value | 510 Thread",
-            "seo_title": "Tropical Punch 510 Chico Verde",
-            "description": "Sweet, tropical fruit punch meets a relaxing indica body effect — smooth, flavorful, and perfect for easing into a calm, mellow evening.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 1,
-            "unit": "g",
-            "name_variant": "Tropical Punch 510",
-            "price": 13.99,
-            "cannabinoids": {}
-        },
-        {
-            "product_name": "Blue Dot | 1g Preroll",
-            "brand": "Quiet Kings",
-            "product_type": "Buds",
-            "lineage": "Sativa",
-            "strain": "Blue Dot",
-            "category": "Prerolls",
-            "subcategory": "House Preroll",
-            "seo_title": "Blue Dot 1g Preroll Quiet Kings",
-            "description": "Bright and energizing, Blue Dot delivers a clear-headed sativa lift with smooth, lightly sweet flavor — an easy go-to for staying active and focused.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 1,
-            "unit": "g",
-            "name_variant": "Blue Dot",
-            "price": 3.39,
-            "cannabinoids": {}
-        },
-        {
-            "product_name": "Dream Queen | 14 Pack | 0.5g per | 7g total",
-            "brand": "Quiet Kings",
-            "product_type": "Buds",
             "lineage": "Hybrid",
-            "strain": "Dream Queen",
-            "category": "Prerolls",
-            "subcategory": "Non-Infused Preroll Packs",
-            "seo_title": "Dream Queen 14 Pack Quiet Kings",
-            "description": "A dreamy, well-balanced hybrid that offers smooth relaxation with a gentle uplift — Dream Queen is easygoing and consistent across the full 14-pack.",
+            "strain": "Beach Party",
+            "category": "Cartridges",
+            "subcategory": "Live Resin & Live Rosin | 510 & All-In-One Disposable",
+            "seo_title": "Beach Party Refined Live Resin AIO Raw Garden",
+            "description": "Bright, fruity, and effortlessly fun — Beach Party delivers a tropical terpene blend with a balanced hybrid effect that keeps the vibe light. A refined live resin all-in-one made for good times.",
             "sale_discount": "10%",
             "tags": "",
             "for_sale": "Yes",
-            "weight_size": 7,
+            "weight_size": 1,
             "unit": "g",
-            "name_variant": "Dream Queen",
-            "price": 18.99,
+            "name_variant": "Beach Party AIO",
+            "price": 49.99,
             "cannabinoids": {}
         }
     ]

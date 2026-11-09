@@ -57,4 +57,5 @@ echo "Starting Django — Ctrl+C stops everything."
 echo ""
 
 # 5. Django — foreground, so Ctrl+C here triggers cleanup for the rest
-python manage.py runserver
+# --insecure: with DEBUG off, runserver still serves static files
+python manage.py runserver --insecure

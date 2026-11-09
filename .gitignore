@@ -24,3 +24,6 @@ logs/
 
 # Local notes
 todo.md
+
+# Local spike findings (contain internal API details)
+notes/

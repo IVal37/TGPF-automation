@@ -5,6 +5,8 @@ from decimal import Decimal
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock, ANY
 
+from django.conf import settings
+from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.http import Http404
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
@@ -24,6 +26,13 @@ from orders.models import Driver, Order
 from orders.services import state
 from orders.services.engine import add_driver, add_order, complete_order
 from orders.services.eta import get_eta
+
+def _as_dispatcher(request):
+    """The dashboard views are @login_required; give a RequestFactory request a
+    logged-in user (an unsaved User counts as authenticated, so no DB is needed)."""
+    request.user = User(username="dispatcher")
+    return request
+
 
 # ── shared fixture ────────────────────────────────────────────────────────────
 
@@ -304,7 +313,7 @@ class TestNewOrderView(SimpleTestCase):
                 name: stack.enter_context(patch(f"orders.views.{name}", **kwargs))
                 for name, kwargs in defaults.items()
             }
-            response = new_order(self._post(payload))
+            response = new_order(self._post(payload), key=settings.WEBHOOK_SECRET)
         return response, mocks
 
     def test_returns_200(self):
@@ -483,7 +492,7 @@ class TestSendDispatchMsgView(TestCase):
             request = self.factory.post("/send_dispatch_msg", {
                 "order_id": "9001", "eta_start": "14:45", "eta_end": "15:45",
             })
-            response = send_dispatch_msg_view(request)
+            response = send_dispatch_msg_view(_as_dispatcher(request))
 
         self.assertEqual(response.status_code, 302)
         mock_send_task.delay.assert_called_once()
@@ -503,7 +512,7 @@ class TestSendDispatchMsgView(TestCase):
             request = self.factory.post("/send_dispatch_msg", {
                 "order_id": "9001", "eta_start": "14:30", "eta_end": "15:30",
             })
-            send_dispatch_msg_view(request)
+            send_dispatch_msg_view(_as_dispatcher(request))
 
         mock_send_task.delay.assert_not_called()
         self.order.refresh_from_db()
@@ -519,7 +528,7 @@ class TestSendDispatchMsgView(TestCase):
             "order_id": "9001", "eta_start": "14:30", "eta_end": "15:30",
         })
         with self.assertRaises(Http404):
-            send_dispatch_msg_view(request)
+            send_dispatch_msg_view(_as_dispatcher(request))
 
 
 class TestSendRescheduleMsgView(TestCase):
@@ -542,7 +551,7 @@ class TestSendRescheduleMsgView(TestCase):
         with patch("orders.views.send_message_task") as mock_send_task, \
              patch("orders.views.fill_order_notes_task") as mock_notes_task:
             request = self.factory.post("/send_reschedule_msg", {"order_id": "9002"})
-            response = send_reschedule_msg_view(request)
+            response = send_reschedule_msg_view(_as_dispatcher(request))
 
         self.assertEqual(response.status_code, 302)
         mock_send_task.delay.assert_called_once_with("15305559999", ANY)
@@ -653,7 +662,7 @@ class TestLinkOrderView(TestCase):
             request = self.factory.post("/link_order", {
                 "order_id": "l2", "primary_order_id": "l1",
             })
-            response = link_order_view(request)
+            response = link_order_view(_as_dispatcher(request))
 
         self.assertEqual(response.status_code, 302)
         self.companion.refresh_from_db()
@@ -671,7 +680,7 @@ class TestLinkOrderView(TestCase):
         request = self.factory.post("/link_order", {
             "order_id": "l3", "primary_order_id": "l1",
         })
-        link_order_view(request)
+        link_order_view(_as_dispatcher(request))
         other.refresh_from_db()
         self.assertIsNone(other.linked_order)
         self.assertFalse(other.dispatch_sent)
@@ -684,7 +693,7 @@ class TestLinkOrderView(TestCase):
             "order_id": "l2", "primary_order_id": "l1",
         })
         with self.assertRaises(Http404):
-            link_order_view(request)
+            link_order_view(_as_dispatcher(request))
 
 
 class TestUnlinkOrderView(TestCase):
@@ -701,7 +710,7 @@ class TestUnlinkOrderView(TestCase):
         from orders.views import unlink_order_view
         factory = RequestFactory()
         request = factory.post("/unlink_order", {"order_id": "u2"})
-        response = unlink_order_view(request)
+        response = unlink_order_view(_as_dispatcher(request))
 
         self.assertEqual(response.status_code, 302)
         companion.refresh_from_db()
@@ -732,7 +741,7 @@ class TestClearDispatchQueueView(TestCase):
         with patch("orders.views.send_message_task") as mock_send_task, \
              patch("orders.views.fill_order_notes_task") as mock_notes_task:
             request = factory.post("/clear_dispatch_queue")
-            response = clear_dispatch_queue_view(request)
+            response = clear_dispatch_queue_view(_as_dispatcher(request))
 
         self.assertEqual(response.status_code, 302)
         mock_send_task.delay.assert_not_called()
@@ -901,7 +910,7 @@ class TestAddProductsFromInvoiceView(SimpleTestCase):
         with patch("orders.views.extract_products_from_invoice", return_value=[{"name": "X"}]) as mock_extract, \
              patch("orders.views.create_product_task") as mock_create_task:
             request = factory.post("/add_products_from_invoice", {"invoice": invoice_file})
-            response = add_products_from_invoice(request)
+            response = add_products_from_invoice(_as_dispatcher(request))
         mock_extract.assert_called_once()
         mock_create_task.delay.assert_called_once_with([{"name": "X"}])
         self.assertEqual(response.status_code, 302)
