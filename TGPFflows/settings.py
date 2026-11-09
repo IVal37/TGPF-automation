@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 from celery.schedules import crontab
+from django.core.exceptions import ImproperlyConfigured
 
 load_dotenv()
 
@@ -25,15 +26,36 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', '')
+
+# the webhook routes are served at hooks/<WEBHOOK_SECRET>/..., so anyone without
+# this value can't post fake orders (see orders/webhooks.py)
+WEBHOOK_SECRET = os.environ.get('WEBHOOK_SECRET', '')
+
+# refuse to start (web server, Celery worker and beat all import settings)
+# rather than run with an empty secret
+for _name, _value in (('DJANGO_SECRET_KEY', SECRET_KEY), ('WEBHOOK_SECRET', WEBHOOK_SECRET)):
+    if not _value:
+        raise ImproperlyConfigured(f"{_name} is not set - add it to .env (see .env.example)")
 
 HEADLESS = os.environ.get("HEADLESS", "false").lower() == "true"
 RESTOCK_TEST_MODE = os.environ.get("RESTOCK_TEST_MODE", "false").lower() == "true"
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "false").lower() == "true"
 
-ALLOWED_HOSTS = ['*']
+# the app is reached through an ngrok tunnel; add your ngrok domain here if
+# it isn't one of these two
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '.ngrok-free.app', '.ngrok.app']
+
+# ngrok forwards requests to Django as plain HTTP, so Django's CSRF Origin
+# check has to be told the public https origins are legitimate
+CSRF_TRUSTED_ORIGINS = ['https://*.ngrok-free.app', 'https://*.ngrok.app']
+
+# dashboard login (django.contrib.auth.urls is mounted at accounts/)
+LOGIN_URL = '/accounts/login/'
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/accounts/login/'
 
 
 # Application definition
@@ -141,9 +163,18 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'filters': {
+        # masks the secret in /hooks/<key>/... paths before anything is printed
+        'redact_webhook_key': {'()': 'orders.webhooks.RedactWebhookKeyFilter'},
+    },
     'formatters': {
         'simple': {
             'format': '[{levelname}] {name}: {message}',
+            'style': '{',
+        },
+        'django.server': {
+            '()': 'django.utils.log.ServerFormatter',
+            'format': '[{server_time}] {message}',
             'style': '{',
         },
     },
@@ -151,11 +182,23 @@ LOGGING = {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'simple',
+            'filters': ['redact_webhook_key'],
+        },
+        # same as Django's default runserver access-log handler, plus the filter
+        'django.server': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'django.server',
+            'filters': ['redact_webhook_key'],
         },
     },
     'loggers': {
         'orders': {
             'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.server': {
+            'handlers': ['django.server'],
             'level': 'INFO',
             'propagate': False,
         },

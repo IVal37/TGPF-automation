@@ -6,9 +6,14 @@ from orders import views
 
 urlpatterns = [
     path("", views.order_list),
-    path("new_order", views.new_order),
-    path("complete_order", views.complete_order_view),
-    path("cancel_order", views.cancel_order_view),
+    # WebJoint webhooks live under a secret path segment (WEBHOOK_SECRET); the
+    # old bare paths just answer 403 so a stale registration is easy to spot
+    path("hooks/<str:key>/new_order", views.new_order),
+    path("hooks/<str:key>/complete_order", views.complete_order_view),
+    path("hooks/<str:key>/cancel_order", views.cancel_order_view),
+    path("new_order", views.legacy_webhook),
+    path("complete_order", views.legacy_webhook),
+    path("cancel_order", views.legacy_webhook),
     path("add_dummy_driver", views.add_dummy_driver),
     path("delete_driver", views.delete_driver_view),
     path("complete_order_manual", views.complete_order_manual),

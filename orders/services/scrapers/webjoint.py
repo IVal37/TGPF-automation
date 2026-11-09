@@ -19,6 +19,7 @@ from selenium.common.exceptions import TimeoutException
 from orders.services.scrapers.browser import (
     BLOCK, ci_contains, click, click_with_js_fallback, create_driver, fill, scroll_into_view,
 )
+from orders.webhooks import redact_webhook_key, webhook_urls
 
 _WEBJOINT_URL = "https://order.thegoodpeoplefarms.com/admin/index.html#/"
 
@@ -555,9 +556,11 @@ def create_product(driver, wait, product_dicts: List[Dict[str, str]]):
 
 @_webjoint_session
 def set_webhooks(driver, wait, base_url: str) -> None:
-    new_order_url = base_url + "/new_order"
-    complete_order_url = base_url + "/complete_order"
-    cancel_order_url = base_url + "/cancel_order"
+    # the three webhook routes live under a secret path segment (WEBHOOK_SECRET)
+    urls = webhook_urls(base_url)
+    new_order_url = urls["new_order"]
+    complete_order_url = urls["complete_order"]
+    cancel_order_url = urls["cancel_order"]
 
     try:
         click(wait, (By.XPATH, '//*[@id="nav_drawer"]/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[9]'))
@@ -582,7 +585,10 @@ def set_webhooks(driver, wait, base_url: str) -> None:
         scroll_into_view(driver, save_changes_button)
         time.sleep(1)
         click_with_js_fallback(driver, save_changes_button)
-        logger.info("set_webhooks: saved — new_order=%s complete_order=%s", new_order_url, complete_order_url)
+        logger.info(
+            "set_webhooks: saved — new_order=%s complete_order=%s",
+            redact_webhook_key(new_order_url), redact_webhook_key(complete_order_url),
+        )
     except Exception as e:
         logger.error("set_webhooks: failed to set or save webhook URLs: %s", e)
 

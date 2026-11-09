@@ -97,7 +97,7 @@
   "send_keys",
   "id=hooks.orderSubmit",
   [
-   "https://example.ngrok.app/new_order"
+   "https://example.ngrok.app/hooks/test-webhook-secret/new_order"
   ]
  ],
  [
@@ -113,7 +113,7 @@
   "send_keys",
   "id=hooks.orderComplete",
   [
-   "https://example.ngrok.app/complete_order"
+   "https://example.ngrok.app/hooks/test-webhook-secret/complete_order"
   ]
  ],
  [
@@ -129,7 +129,7 @@
   "send_keys",
   "id=hooks.orderCancel",
   [
-   "https://example.ngrok.app/cancel_order"
+   "https://example.ngrok.app/hooks/test-webhook-secret/cancel_order"
   ]
  ],
  [
@@ -159,7 +159,7 @@
  [
   "log",
   "INFO",
-  "set_webhooks: saved — new_order=https://example.ngrok.app/new_order complete_order=https://example.ngrok.app/complete_order"
+  "set_webhooks: saved — new_order=https://example.ngrok.app/hooks/<redacted>/new_order complete_order=https://example.ngrok.app/hooks/<redacted>/complete_order"
  ],
  [
   "sleep",

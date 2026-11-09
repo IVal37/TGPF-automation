@@ -25,6 +25,16 @@ Before all 5, once per shell:
 5. Django
     python manage.py runserver
 
+First-time setup / security (once):
+
+    # in .env (see .env.example): DJANGO_SECRET_KEY and WEBHOOK_SECRET are required,
+    # the server will not start without them. Generate values with:
+    python -c "import secrets; print(secrets.token_urlsafe(50))"   # DJANGO_SECRET_KEY
+    python -c "import secrets; print(secrets.token_urlsafe(32))"   # WEBHOOK_SECRET
+    python manage.py createsuperuser    # the dashboard login at /accounts/login/ (MySQL must be running)
+
+WebJoint's webhooks are re-registered with the secret URLs (hooks/<WEBHOOK_SECRET>/new_order ...) every time the server starts. Changing WEBHOOK_SECRET needs a restart.
+
 Running tests (in-memory SQLite, MySQL does not need to be running):
 
     python manage.py test orders --settings=orders.test_settings

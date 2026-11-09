@@ -1,10 +1,12 @@
 # imports from std lib
 import json
+import logging
 from datetime import datetime
 from decimal import Decimal
 
 # imports from django
-from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -32,6 +34,9 @@ from orders.services.engine import (
     cancel_order, complete_order, delete_driver,
 )
 from orders.services.state import active_drivers, completed_orders, drivers_by_id, restock_items
+from orders.webhooks import client_ip, require_webhook_key
+
+logger = logging.getLogger(__name__)
 
 # orders with a real ETA window still waiting on a dispatcher to approve/send
 def _pending_queryset():
@@ -63,11 +68,13 @@ def _pending_orders():
         })
     return result
 
+@login_required
 def pending_orders_partial(request):
     """Renders just the dispatch-queue cards, polled by the dashboard's JS to
     auto-refresh that tab without a full page reload."""
     return render(request, 'orders/_pending_orders.html', {'pending_orders': _pending_orders()})
 
+@login_required
 def restock_partial(request):
     """Renders just the completed-orders/restock-list content, polled by the
     dashboard's JS to auto-refresh that tab without a full page reload."""
@@ -76,7 +83,7 @@ def restock_partial(request):
         'restock_items': restock_items,
     })
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def clear_dispatch_queue_view(request):
     """Dismisses every order currently sitting in the Dispatch Queue without
@@ -86,6 +93,7 @@ def clear_dispatch_queue_view(request):
     _pending_queryset().update(dispatch_sent=True)
     return redirect("/")
 
+@login_required
 def order_list(request):
     pending_orders = _pending_orders()
     return render(request, 'orders/order_list.html', {
@@ -96,7 +104,7 @@ def order_list(request):
         'pending_orders': pending_orders,
     })
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def add_dummy_driver(request):
     count = Driver.objects.count()
@@ -104,7 +112,7 @@ def add_dummy_driver(request):
     add_driver(driver.pk)
     return redirect("/")
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def delete_driver_view(request):
     driver_id = request.POST.get("driver_id")
@@ -112,7 +120,7 @@ def delete_driver_view(request):
         delete_driver(int(driver_id))
     return redirect("/")
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def complete_order_manual(request):
     order_id = request.POST.get("order_id")
@@ -125,6 +133,16 @@ def _extract_delivery_fee(data) -> Decimal:
     return Decimal(str(data.get("delivery", 0)))
 
 @csrf_exempt
+def legacy_webhook(request):
+    """The old bare /new_order, /complete_order and /cancel_order paths. They no
+    longer do anything - WebJoint must call hooks/<WEBHOOK_SECRET>/... instead -
+    but they stay routed so a stale registration shows up in the log. Exempt from
+    CSRF only so a POST gets this logged 403 rather than a bare CSRF failure."""
+    logger.warning("webhook hit on retired path %s from %s", request.path, client_ip(request))
+    return HttpResponseForbidden()
+
+@csrf_exempt
+@require_webhook_key
 @require_http_methods(["POST"])
 def new_order(request):
     data = json.loads(request.body)
@@ -207,7 +225,7 @@ def new_order(request):
             dispatch_to_driver_task.delay()
     return JsonResponse({"status": "ok"})
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def send_dispatch_msg_view(request):
     order_id = request.POST.get("order_id")
@@ -228,7 +246,7 @@ def send_dispatch_msg_view(request):
     _mark_dispatch_sent(order_id)
     return redirect("/")
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def send_reschedule_msg_view(request):
     order_id = request.POST.get("order_id")
@@ -241,7 +259,7 @@ def send_reschedule_msg_view(request):
     _mark_dispatch_sent(order_id)
     return redirect("/")
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def link_order_view(request):
     """Marks an FSA/FSM order as the second part of a legal-limit split: it's
@@ -269,7 +287,7 @@ def link_order_view(request):
 
     return redirect("/")
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def unlink_order_view(request):
     """Reverses link_order_view — puts the FSA/FSM order back into the
@@ -285,6 +303,7 @@ def unlink_order_view(request):
     return redirect("/")
 
 @csrf_exempt
+@require_webhook_key
 @require_http_methods(["POST"])
 def complete_order_view(request):
     data = json.loads(request.body)
@@ -292,13 +311,14 @@ def complete_order_view(request):
     return JsonResponse({"status": "ok"})
 
 @csrf_exempt
+@require_webhook_key
 @require_http_methods(["POST"])
 def cancel_order_view(request):
     data = json.loads(request.body)
     cancel_order(order_id=data["id"])
     return JsonResponse({"status": "ok"})
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def reconcile_restock(request):
     selected_ids = set(request.POST.getlist("order_ids"))
@@ -315,13 +335,13 @@ def reconcile_restock(request):
     completed_orders[:] = [e for e in completed_orders if e["order_id"] not in to_remove]
     return redirect("/")
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def clear_restock(request):
     restock_items.clear()
     return redirect("/")
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def add_shell_order_view(request):
     city = request.POST.get("city")
@@ -329,7 +349,7 @@ def add_shell_order_view(request):
         add_shell_order(city)
     return redirect("/")
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def add_products_from_invoice(request):
     invoice_file = request.FILES["invoice"]
@@ -337,7 +357,7 @@ def add_products_from_invoice(request):
     create_product_task.delay(products)
     return redirect("/")
 
-@csrf_exempt
+@login_required
 @require_http_methods(["POST"])
 def set_driver_location_view(request):
     driver_id = request.POST.get("driver_id")
