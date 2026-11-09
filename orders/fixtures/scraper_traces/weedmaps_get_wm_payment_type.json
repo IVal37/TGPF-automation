@@ -65,11 +65,16 @@
  [
   "find_element",
   "xpath",
-  "//*[@id=\"__next\"]/div/div[2]/div/div[3]/div[2]/div[1]/div[2]/div[1]/div[1]/span/a"
+  "//a[starts-with(@href, \"/orders/\") and normalize-space(.)=\"#49018286\"]"
  ],
  [
   "click",
-  "xpath=//*[@id=\"__next\"]/div/div[2]/div/div[3]/div[2]/div[1]/div[2]/div[1]/div[1]/span/a"
+  "xpath=//a[starts-with(@href, \"/orders/\") and normalize-space(.)=\"#49018286\"]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//span[normalize-space(.)=\"Order #49018286\"]"
  ],
  [
   "find_element",

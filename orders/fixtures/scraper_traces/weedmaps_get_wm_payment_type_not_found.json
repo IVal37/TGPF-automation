@@ -1,0 +1,91 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {}
+  }
+ ],
+ [
+  "get",
+  "https://weedmaps.com/login?return_url=https://admin.weedmaps.com/orders"
+ ],
+ [
+  "find_element",
+  "id",
+  "user_username"
+ ],
+ [
+  "clear",
+  "id=user_username"
+ ],
+ [
+  "send_keys",
+  "id=user_username",
+  [
+   "fake-weedmaps-email"
+  ]
+ ],
+ [
+  "find_element",
+  "id",
+  "user_password"
+ ],
+ [
+  "clear",
+  "id=user_password"
+ ],
+ [
+  "send_keys",
+  "id=user_password",
+  [
+   "fake-weedmaps-password"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "btn.btn-signup-primary"
+ ],
+ [
+  "click",
+  "class name=btn.btn-signup-primary"
+ ],
+ [
+  "find_element",
+  "id",
+  "side-nav-orders-all-orders"
+ ],
+ [
+  "click",
+  "id=side-nav-orders-all-orders"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//a[starts-with(@href, \"/orders/\") and normalize-space(.)=\"#49018286\"]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//a[starts-with(@href, \"/orders/\") and normalize-space(.)=\"#49018286\"]"
+ ],
+ [
+  "log",
+  "WARNING",
+  "get_wm_payment_type (Weedmaps order 49018286): order not found or page is another order; defaulting to Cash (TimeoutException)"
+ ],
+ [
+  "sleep",
+  5
+ ],
+ [
+  "quit"
+ ],
+ [
+  "return",
+  "Cash"
+ ]
+]

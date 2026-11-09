@@ -36,6 +36,10 @@ class Driver(models.Model):
 
 class Order(models.Model):
     order_id = models.CharField(max_length=100, unique=True)
+    # WebJoint's string key for the order (<company>-<facility>-<customer>-<id>),
+    # used to open exactly this order in the WebJoint admin; blank for orders
+    # created before it was stored
+    webjoint_id = models.CharField(max_length=100, blank=True)
     customer_name = models.CharField(max_length=255, blank=True)
     customer_phone = models.CharField(max_length=20, blank=True)
     city = models.CharField(max_length=255)

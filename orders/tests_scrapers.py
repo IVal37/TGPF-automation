@@ -23,6 +23,7 @@ from unittest.mock import patch
 from django.test import SimpleTestCase, override_settings
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
 
 from orders.services.scrapers import merchant_pay, talkroute, webjoint, weedmaps
 from orders.services.scrapers.browser import ci_contains
@@ -138,6 +139,9 @@ class FakeChrome:
     def get(self, url):
         self.trace.append(["get", url])
 
+    def refresh(self):
+        self.trace.append(["refresh"])
+
     def quit(self):
         self.trace.append(["quit"])
 
@@ -166,6 +170,17 @@ class _TraceLogHandler(logging.Handler):
 
 def spec(text="", **kw):
     return {"text": text, **kw}
+
+
+# fake ids, shaped like WebJoint's "<company>-<facility>-<customer>-<order>"
+ORDER_ID = "1111-2222-3333333-4444444"
+OTHER_ORDER_ID = "1111-2222-5555555-6666666"
+ORDER_TITLE = (By.CSS_SELECTOR, '[data-test="page-title"]')
+
+
+def order_page(order_id=ORDER_ID):
+    """DOM entry for the order page's heading, as shown for `order_id`."""
+    return {ORDER_TITLE: [spec(f"Order # {order_id}")]}
 
 
 @override_settings(HEADLESS=False)
@@ -215,15 +230,70 @@ class ScraperTraceTests(SimpleTestCase):
         notes_xpath = '/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]'
         self.run_scenario(
             "webjoint_fill_order_notes",
-            lambda: webjoint.fill_order_notes("test note"),
-            dom={(By.XPATH, notes_xpath): [spec(attrs={"value": "old note"})]},
+            lambda: webjoint.fill_order_notes(ORDER_ID, "test note"),
+            dom={**order_page(), (By.XPATH, notes_xpath): [spec(attrs={"value": "old note"})]},
         )
+
+    def test_fill_order_notes_wrong_order(self):
+        # the page that opened is another customer's order: nothing may be typed or saved
+        self.run_scenario(
+            "webjoint_fill_order_notes_wrong_order",
+            lambda: webjoint.fill_order_notes(ORDER_ID, "test note"),
+            dom=order_page(OTHER_ORDER_ID),
+        )
+
+    def test_pull_from_chiles_wrong_order(self):
+        self.run_scenario(
+            "webjoint_pull_from_chiles_wrong_order",
+            lambda: webjoint.pull_from_chiles(ORDER_ID),
+            dom=order_page(OTHER_ORDER_ID),
+        )
+
+    def test_dispatch_to_driver_wrong_order(self):
+        self.run_scenario(
+            "webjoint_dispatch_to_driver_wrong_order",
+            lambda: webjoint.dispatch_to_driver(ORDER_ID),
+            dom=order_page(OTHER_ORDER_ID),
+        )
+
+    def test_open_order_raises_on_mismatched_page(self):
+        trace = []
+        chrome = type("ScenarioChrome", (FakeChrome,), {
+            "trace": trace, "dom": order_page(OTHER_ORDER_ID), "scripts": {},
+        })
+        driver = chrome()
+        wait = WebDriverWait(driver, 10)
+        with patch("selenium.webdriver.support.wait.time", FakeClock()):
+            with self.assertRaises(webjoint.WrongOrderError) as caught:
+                webjoint._open_order(driver, wait, ORDER_ID)
+        self.assertEqual((caught.exception.expected, caught.exception.seen), (ORDER_ID, OTHER_ORDER_ID))
+
+    def test_open_order_raises_when_no_order_heading(self):
+        driver = type("ScenarioChrome", (FakeChrome,), {"trace": [], "dom": {}, "scripts": {}})()
+        with patch("selenium.webdriver.support.wait.time", FakeClock()):
+            with self.assertRaises(webjoint.WrongOrderError) as caught:
+                webjoint._open_order(driver, WebDriverWait(driver, 10), ORDER_ID)
+        self.assertIsNone(caught.exception.seen)
+
+    def test_open_order_returns_on_matching_page(self):
+        trace = []
+        driver = type("ScenarioChrome", (FakeChrome,), {"trace": trace, "dom": order_page(), "scripts": {}})()
+        with patch("selenium.webdriver.support.wait.time", FakeClock()):
+            webjoint._open_order(driver, WebDriverWait(driver, 10), ORDER_ID)
+        self.assertIn(["get", f"{webjoint._WEBJOINT_URL}orders/{ORDER_ID}/show"], trace)
+        self.assertIn(["refresh"], trace)
+
+    def test_open_order_refuses_blank_id(self):
+        driver = type("ScenarioChrome", (FakeChrome,), {"trace": [], "dom": {}, "scripts": {}})()
+        with self.assertRaises(webjoint.WrongOrderError):
+            webjoint._open_order(driver, WebDriverWait(driver, 10), "")
 
     def test_pull_from_chiles_available(self):
         rows = '//tbody/tr'
         dialog = '//div[@role="dialog"]'
         qty = lambda i: f"packagequantities[{i}].nfrompackagequantity"
         dom = {
+            **order_page(),
             (By.XPATH, rows): [
                 spec("Item A\nStarting Shift Mobile Inventory"),
                 spec("Item B\nChiles Rd Shop"),
@@ -240,19 +310,26 @@ class ScraperTraceTests(SimpleTestCase):
         }
         self.run_scenario(
             "webjoint_pull_from_chiles_available",
-            webjoint.pull_from_chiles, dom=dom, scripts=scripts,
+            lambda: webjoint.pull_from_chiles(ORDER_ID), dom=dom, scripts=scripts,
         )
 
     def test_pull_from_chiles_kit_removal(self):
         dom = {
+            **order_page(),
             (By.XPATH, '//tbody/tr'): [spec("Item K\nStarting Shift Mobile Inventory")],
             (By.XPATH, '//*[@role="option" and contains(.,"@ Starting Shift Mobile Inventory")]'):
                 [spec("@ Starting Shift Mobile Inventory")],
         }
-        self.run_scenario("webjoint_pull_from_chiles_kit_removal", webjoint.pull_from_chiles, dom=dom)
+        self.run_scenario(
+            "webjoint_pull_from_chiles_kit_removal", lambda: webjoint.pull_from_chiles(ORDER_ID), dom=dom,
+        )
 
     def test_dispatch_to_driver(self):
-        self.run_scenario("webjoint_dispatch_to_driver", webjoint.dispatch_to_driver)
+        self.run_scenario(
+            "webjoint_dispatch_to_driver",
+            lambda: webjoint.dispatch_to_driver(ORDER_ID),
+            dom=order_page(),
+        )
 
     @staticmethod
     def _product(**overrides):
@@ -330,10 +407,32 @@ class ScraperTraceTests(SimpleTestCase):
 
     def test_weedmaps_get_wm_payment_type(self):
         field = '//*[@id="__next"]/div/div[2]/div/div[3]/div[3]/div[1]/div[1]/div/div/div[4]/div[1]/p[1]'
+        header = '//span[normalize-space(.)="Order #49018286"]'
         self.run_scenario(
             "weedmaps_get_wm_payment_type",
-            weedmaps.get_wm_payment_type,
-            dom={(By.XPATH, field): [spec("Cashless")]},
+            lambda: weedmaps.get_wm_payment_type(49018286),
+            dom={(By.XPATH, header): [spec("Order #49018286")], (By.XPATH, field): [spec("Cashless")]},
+        )
+
+    def test_weedmaps_get_wm_payment_type_order_not_found(self):
+        # the order's link/page never appears: Cash, and the payment field is never read
+        field = '//*[@id="__next"]/div/div[2]/div/div[3]/div[3]/div[1]/div[1]/div/div/div[4]/div[1]/p[1]'
+        self.run_scenario(
+            "weedmaps_get_wm_payment_type_not_found",
+            lambda: weedmaps.get_wm_payment_type(49018286),
+            dom={(By.XPATH, field): [spec("Cashless")], **self._missing_wm_order()},
+        )
+
+    @staticmethod
+    def _missing_wm_order():
+        link = '//a[starts-with(@href, "/orders/") and normalize-space(.)="#49018286"]'
+        return {(By.XPATH, link): MISSING}
+
+    def test_weedmaps_get_wm_payment_type_without_id(self):
+        # no Weedmaps number in the webhook: no browser at all
+        self.run_scenario(
+            "weedmaps_get_wm_payment_type_no_id",
+            lambda: weedmaps.get_wm_payment_type(None),
         )
 
     def test_merchant_pay_send_merchant_pay_link(self):

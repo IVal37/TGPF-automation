@@ -38,6 +38,8 @@ def _as_dispatcher(request):
 
 SAMPLE_ORDER = {
     "id": 6767008,
+    "_id": "1111-2222-3333333-6767008",
+    "weedmapsOrderId": 49018286,
     "source": "External",
     "created": "2025-12-07T19:26:23.124Z",
     "subtotal": 65.98,
@@ -73,6 +75,9 @@ SAMPLE_ORDER = {
         },
     ],
 }
+
+
+WJ_ID = SAMPLE_ORDER["_id"]
 
 
 def _msg(**overrides):
@@ -385,7 +390,7 @@ class TestNewOrderView(SimpleTestCase):
             "id": "6767008", "name": "Hailey", "last_name": "White",
             "phone": "15307239356", "pay_type": "Cash", "source": "External",
         }})
-        mocks["get_wm_payment_type"].assert_called_once()
+        mocks["get_wm_payment_type"].assert_called_once_with(49018286)
 
     def test_pos_source_does_not_scrape(self):
         _, mocks = self._run()
@@ -401,7 +406,7 @@ class TestNewOrderView(SimpleTestCase):
     def test_pending_status_dispatches_to_driver(self):
         payload = dict(SAMPLE_ORDER, status="Pending")
         _, mocks = self._run(payload=payload)
-        mocks["dispatch_to_driver_task"].delay.assert_called_once()
+        mocks["dispatch_to_driver_task"].delay.assert_called_once_with(WJ_ID)
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_non_pending_status_does_not_dispatch_to_driver(self):
@@ -414,7 +419,7 @@ class TestNewOrderView(SimpleTestCase):
         # still fire immediately; the SMS + WebJoint notes wait for a dispatcher
         # to approve/edit the ETA window via send_dispatch_msg_view
         _, mocks = self._run()
-        mocks["pull_from_chiles_task"].delay.assert_called_once()
+        mocks["pull_from_chiles_task"].delay.assert_called_once_with(WJ_ID)
         mocks["fill_order_notes_task"].delay.assert_not_called()
         mocks["send_message_task"].delay.assert_not_called()
 
@@ -424,7 +429,8 @@ class TestNewOrderView(SimpleTestCase):
         # auto-sending exactly as before and never enter the dispatch queue
         _, mocks = self._run(is_under_min={"return_value": True})
         mocks["send_message_task"].delay.assert_called_once_with("15307239356", "msg")
-        mocks["fill_order_notes_task"].delay.assert_called_once_with("reached out about under min")
+        mocks["fill_order_notes_task"].delay.assert_called_once_with(WJ_ID, "reached out about under min")
+        mocks["pull_from_chiles_task"].delay.assert_called_once_with(WJ_ID)
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_no_text_customer_skips_queue_but_writes_notes(self):
@@ -433,7 +439,22 @@ class TestNewOrderView(SimpleTestCase):
         payload = dict(SAMPLE_ORDER, customer={**SAMPLE_ORDER["customer"], "name": "Mohsen Awara"})
         _, mocks = self._run(payload=payload)
         mocks["send_message_task"].delay.assert_not_called()
-        mocks["fill_order_notes_task"].delay.assert_called_once_with("notes")
+        mocks["fill_order_notes_task"].delay.assert_called_once_with(WJ_ID, "notes")
+
+    def test_order_is_saved_with_its_webjoint_id(self):
+        _, mocks = self._run()
+        self.assertEqual(mocks["add_order"].call_args.kwargs["webjoint_id"], WJ_ID)
+
+    @override_settings(RESTOCK_TEST_MODE=False)
+    def test_webhook_without_webjoint_id_skips_webjoint_tasks_but_still_texts(self):
+        payload = {k: v for k, v in SAMPLE_ORDER.items() if k != "_id"}
+        with self.assertLogs("orders.views", "WARNING") as logs:
+            _, mocks = self._run(payload=payload, is_under_min={"return_value": True})
+        self.assertEqual(mocks["add_order"].call_args.kwargs["webjoint_id"], "")
+        mocks["send_message_task"].delay.assert_called_once_with("15307239356", "msg")
+        mocks["fill_order_notes_task"].delay.assert_not_called()
+        mocks["pull_from_chiles_task"].delay.assert_not_called()
+        self.assertTrue(any("6767008" in line for line in logs.output))
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_non_merchant_pay_customer_does_not_send_link(self):
@@ -482,6 +503,14 @@ class TestSendDispatchMsgView(TestCase):
             payment_type="Cash",
             total=Decimal("50.00"),
             discount=Decimal("0.00"),
+            webjoint_id="1111-2222-3333333-9001",
+        )
+        # a newer order that arrived since: notes must still go to order 9001
+        Order.objects.create(
+            order_id="9099", customer_name="Newer Customer", city="Davis",
+            order_date=datetime(2026, 7, 20, 14, 20, 0),
+            eta_start=datetime(2026, 7, 20, 15, 0, 0), eta_end=datetime(2026, 7, 20, 16, 0, 0),
+            webjoint_id="1111-2222-4444444-9099",
         )
 
     @override_settings(RESTOCK_TEST_MODE=False)
@@ -499,11 +528,29 @@ class TestSendDispatchMsgView(TestCase):
         self.assertEqual(mock_send_task.delay.call_args.args[0], "15305551234")
         self.assertIn("2:45-3:45", mock_send_task.delay.call_args.args[1])
         mock_notes_task.delay.assert_called_once()
+        # the note targets this order's WebJoint id, not the newer order's
+        self.assertEqual(mock_notes_task.delay.call_args.args[0], "1111-2222-3333333-9001")
 
         self.order.refresh_from_db()
         self.assertTrue(self.order.dispatch_sent)
         self.assertEqual(self.order.eta_start, datetime(2026, 7, 20, 14, 45, 0))
         self.assertEqual(self.order.eta_end, datetime(2026, 7, 20, 15, 45, 0))
+
+    @override_settings(RESTOCK_TEST_MODE=False)
+    def test_order_without_webjoint_id_is_texted_but_note_is_skipped(self):
+        from orders.views import send_dispatch_msg_view
+        Order.objects.filter(order_id="9001").update(webjoint_id="")
+        with patch("orders.views.send_message_task") as mock_send_task, \
+             patch("orders.views.fill_order_notes_task") as mock_notes_task, \
+             self.assertLogs("orders.views", "WARNING") as logs:
+            request = self.factory.post("/send_dispatch_msg", {
+                "order_id": "9001", "eta_start": "14:45", "eta_end": "15:45",
+            })
+            send_dispatch_msg_view(_as_dispatcher(request))
+
+        mock_send_task.delay.assert_called_once()
+        mock_notes_task.delay.assert_not_called()
+        self.assertTrue(any("9001" in line for line in logs.output))
 
     @override_settings(RESTOCK_TEST_MODE=True)
     def test_test_mode_marks_sent_without_texting(self):
@@ -543,6 +590,13 @@ class TestSendRescheduleMsgView(TestCase):
             order_date=datetime(2026, 7, 20, 21, 0, 0),
             eta_start=datetime(2026, 7, 20, 22, 30, 0),
             eta_end=datetime(2026, 7, 20, 23, 30, 0),
+            webjoint_id="1111-2222-3333333-9002",
+        )
+        Order.objects.create(
+            order_id="9098", customer_name="Newer Customer", city="Davis",
+            order_date=datetime(2026, 7, 20, 22, 0, 0),
+            eta_start=datetime(2026, 7, 20, 23, 0, 0), eta_end=datetime(2026, 7, 21, 0, 0, 0),
+            webjoint_id="1111-2222-4444444-9098",
         )
 
     @override_settings(RESTOCK_TEST_MODE=False)
@@ -556,7 +610,9 @@ class TestSendRescheduleMsgView(TestCase):
         self.assertEqual(response.status_code, 302)
         mock_send_task.delay.assert_called_once_with("15305559999", ANY)
         self.assertIn("reschedule", mock_send_task.delay.call_args.args[1].lower())
-        mock_notes_task.delay.assert_called_once_with("reached out about rescheduling for tomorrow morning")
+        mock_notes_task.delay.assert_called_once_with(
+            "1111-2222-3333333-9002", "reached out about rescheduling for tomorrow morning",
+        )
 
         self.order.refresh_from_db()
         self.assertTrue(self.order.dispatch_sent)
@@ -647,12 +703,14 @@ class TestLinkOrderView(TestCase):
             order_date=datetime(2026, 7, 20, 14, 0, 0),
             eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
             total=Decimal("50.00"), delivery_fee=Decimal("5.00"),
+            webjoint_id="1111-2222-3333333-1001",
         )
         self.companion = Order.objects.create(
             order_id="l2", customer_name="Frank Sinatra Adult", city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
             eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
             total=Decimal("30.00"), delivery_fee=Decimal("5.00"),
+            webjoint_id="1111-2222-5555555-1002",
         )
 
     @override_settings(RESTOCK_TEST_MODE=False)
@@ -668,7 +726,10 @@ class TestLinkOrderView(TestCase):
         self.companion.refresh_from_db()
         self.assertEqual(self.companion.linked_order_id, self.primary.pk)
         self.assertTrue(self.companion.dispatch_sent)
-        mock_notes_task.delay.assert_called_once_with("second part of Jane Doe's order")
+        # the note is written on the companion's WebJoint order, not the primary's
+        mock_notes_task.delay.assert_called_once_with(
+            "1111-2222-5555555-1002", "second part of Jane Doe's order",
+        )
 
     def test_rejects_non_fsa_fsm_order(self):
         other = Order.objects.create(

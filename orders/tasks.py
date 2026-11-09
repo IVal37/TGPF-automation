@@ -28,16 +28,16 @@ def send_message_task(phone: str, message: str) -> None:
     send_message(phone, message)
 
 @shared_task
-def fill_order_notes_task(order_notes: str) -> None:
-    fill_order_notes(order_notes)
+def fill_order_notes_task(order_id: str, order_notes: str) -> None:
+    fill_order_notes(order_id, order_notes)
 
 @shared_task
-def pull_from_chiles_task() -> None:
-    pull_from_chiles()
+def pull_from_chiles_task(order_id: str) -> None:
+    pull_from_chiles(order_id)
 
 @shared_task
-def dispatch_to_driver_task() -> None:
-    dispatch_to_driver()
+def dispatch_to_driver_task(order_id: str) -> None:
+    dispatch_to_driver(order_id)
 
 @shared_task
 def create_product_task(product_dicts: List[Dict[str, str]]) -> None:

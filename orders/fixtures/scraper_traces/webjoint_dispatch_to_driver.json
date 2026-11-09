@@ -63,17 +63,16 @@
   "//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
  ],
  [
-  "click",
-  "xpath=//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/orders/1111-2222-3333333-4444444/show"
  ],
  [
-  "find_element",
-  "xpath",
-  "//*[@id=\"root\"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span"
+  "refresh"
  ],
  [
-  "click",
-  "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span"
+  "find_elements",
+  "css selector",
+  "[data-test=\"page-title\"]"
  ],
  [
   "find_element",

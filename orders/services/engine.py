@@ -86,11 +86,13 @@ def add_order(
     total: Decimal = Decimal("0"),
     delivery_fee: Decimal = Decimal("0"),
     items: list = None,
+    webjoint_id: str = "",
 ) -> None:
     assigned_driver: Driver = _pick_driver(order_city)
 
     order = Order(
         order_id=order_id,
+        webjoint_id=webjoint_id,
         customer_name=customer_name,
         customer_phone=customer_phone,
         city=order_city,

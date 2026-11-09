@@ -45,6 +45,16 @@ def _pending_queryset():
 def _mark_dispatch_sent(order_id: str) -> None:
     Order.objects.filter(order_id=order_id).update(dispatch_sent=True)
 
+# queues a WebJoint Selenium task for exactly one order, identified by its
+# WebJoint id. Orders saved before webjoint_id existed (or from a payload
+# without _id) have none; acting on "some" order is exactly the bug this
+# avoids, so those are skipped with a warning instead.
+def _queue_webjoint(task, order_id: str, webjoint_id: str, *args) -> None:
+    if not webjoint_id:
+        logger.warning("no WebJoint id for order %s; skipped %s", order_id, task.name)
+        return
+    task.delay(webjoint_id, *args)
+
 def _pending_orders():
     orders_list = list(_pending_queryset().order_by('eta_start'))
     result = []
@@ -181,14 +191,20 @@ def new_order(request):
         add_storefront_order(**order_fields)
         return JsonResponse({"status": "ok"})
 
+    # WebJoint's own key for this order; every WebJoint action below targets it
+    webjoint_id = data.get("_id", "")
+    if not webjoint_id:
+        logger.warning("new_order %s: webhook has no _id; WebJoint actions will be skipped", order_fields["order_id"])
+
     add_order(
         order_city=data["shipping"]["city"],
         customer_phone=data["customer"]["phone"][1:],
+        webjoint_id=webjoint_id,
         **order_fields,
     )
     msg_dict = extract_msg_info(data)
     if is_weedmaps_source(msg_dict["source"]) and not settings.RESTOCK_TEST_MODE:
-        msg_dict["pay_type"] = get_wm_payment_type()
+        msg_dict["pay_type"] = get_wm_payment_type(data.get("weedmapsOrderId"))
     # always computed: sets order.eta_start/eta_end via get_eta (including any
     # scheduled-order override) and routes under-min vs normal internally. For
     # normal (has-ETA) orders the returned text is discarded below — the real
@@ -205,13 +221,13 @@ def new_order(request):
             # no ETA window in this message, nothing to double-check — auto-send
             if not no_text:
                 send_message_task.delay(msg_dict["phone"], dispatch_msg)
-            fill_order_notes_task.delay("reached out about under min")
+            _queue_webjoint(fill_order_notes_task, msg_dict["id"], webjoint_id, "reached out about under min")
             _mark_dispatch_sent(msg_dict["id"])
         elif no_text:
             # excluded customer: we never text them, so there's nothing to hold
             # for approval — write notes with the system-computed window now
             order = Order.objects.get(order_id=msg_dict["id"])
-            fill_order_notes_task.delay(get_order_notes(order))
+            _queue_webjoint(fill_order_notes_task, msg_dict["id"], webjoint_id, get_order_notes(order))
             _mark_dispatch_sent(msg_dict["id"])
         # else: normal dispatch with a real ETA window — leave dispatch_sent=False
         # so it shows up in the Dispatch Queue tab for a human to approve/edit
@@ -220,9 +236,9 @@ def new_order(request):
         if is_merchant_pay_customer(msg_dict["name"], msg_dict["last_name"]) and not under_min:
             send_merchant_pay_link_task.delay()
 
-        pull_from_chiles_task.delay()
+        _queue_webjoint(pull_from_chiles_task, msg_dict["id"], webjoint_id)
         if data.get("status") == "Pending":
-            dispatch_to_driver_task.delay()
+            _queue_webjoint(dispatch_to_driver_task, msg_dict["id"], webjoint_id)
     return JsonResponse({"status": "ok"})
 
 @login_required
@@ -241,7 +257,7 @@ def send_dispatch_msg_view(request):
 
     if not settings.RESTOCK_TEST_MODE:
         send_message_task.delay(order.customer_phone, build_dispatch_msg_from_order(order))
-        fill_order_notes_task.delay(get_order_notes(order))
+        _queue_webjoint(fill_order_notes_task, order.order_id, order.webjoint_id, get_order_notes(order))
 
     _mark_dispatch_sent(order_id)
     return redirect("/")
@@ -254,7 +270,10 @@ def send_reschedule_msg_view(request):
 
     if not settings.RESTOCK_TEST_MODE:
         send_message_task.delay(order.customer_phone, build_reschedule_msg_from_order(order))
-        fill_order_notes_task.delay("reached out about rescheduling for tomorrow morning")
+        _queue_webjoint(
+            fill_order_notes_task, order.order_id, order.webjoint_id,
+            "reached out about rescheduling for tomorrow morning",
+        )
 
     _mark_dispatch_sent(order_id)
     return redirect("/")
@@ -283,7 +302,11 @@ def link_order_view(request):
     companion.save()
 
     if not settings.RESTOCK_TEST_MODE:
-        fill_order_notes_task.delay(f"second part of {primary.customer_name}'s order")
+        # the note goes on the companion's own WebJoint order, not the primary's
+        _queue_webjoint(
+            fill_order_notes_task, companion.order_id, companion.webjoint_id,
+            f"second part of {primary.customer_name}'s order",
+        )
 
     return redirect("/")
 

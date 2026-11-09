@@ -1,0 +1,11 @@
+[
+ [
+  "log",
+  "WARNING",
+  "get_wm_payment_type: no Weedmaps order id in the webhook; defaulting to Cash"
+ ],
+ [
+  "return",
+  "Cash"
+ ]
+]

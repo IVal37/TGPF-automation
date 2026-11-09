@@ -1,6 +1,7 @@
 # imports from std lib
 import difflib
 import functools
+import inspect
 import logging
 import os
 import re
@@ -24,9 +25,19 @@ from orders.webhooks import redact_webhook_key, webhook_urls
 _WEBJOINT_URL = "https://order.thegoodpeoplefarms.com/admin/index.html#/"
 
 _ORDERS_NAV_XPATH = "//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
-_NEWEST_ORDER_XPATH = '//*[@id="root"]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[2]/span'
+_ORDER_TITLE = (By.CSS_SELECTOR, '[data-test="page-title"]')
+_ORDER_TITLE_RE = re.compile(r"Order\s*#\s*(\S+)")
 _SAVE_CHANGES_XPATH = '//button[contains(.,"Save Changes")]'
 _CANCEL_XPATH = '//*[text()="Cancel"]'
+
+
+# raised when the page that opened is not the order we meant to act on; the
+# caller logs it and aborts, so nothing is ever written to the wrong order
+class WrongOrderError(Exception):
+    def __init__(self, expected, seen):
+        super().__init__(f"expected order {expected!r} but the page shows {seen!r}")
+        self.expected = expected
+        self.seen = seen
 
 
 def _login(driver, wait):
@@ -39,8 +50,11 @@ def _login(driver, wait):
 # wraps a scraper body in a logged-in WebJoint browser session: launches
 # Chrome, logs in (logging "<fn name>: login failed" and bailing if that
 # fails), calls fn(driver, wait, *args), and always quits the browser.
-# Callers just call e.g. fill_order_notes(notes) — driver/wait are injected.
+# Callers just call e.g. fill_order_notes(order_id, notes) — driver/wait are
+# injected. If fn takes an order_id, the "login failed" line names that order.
 def _webjoint_session(fn):
+    takes_order = "order_id" in inspect.signature(fn).parameters
+
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         driver, wait = create_driver({"profile.default_content_setting_values.notifications": BLOCK})
@@ -48,7 +62,10 @@ def _webjoint_session(fn):
             try:
                 _login(driver, wait)
             except Exception as e:
-                logger.error("%s: login failed: %s", fn.__name__, e)
+                label = fn.__name__
+                if takes_order:
+                    label += f" (order {kwargs.get('order_id', args[0] if args else None)})"
+                logger.error("%s: login failed: %s", label, e)
                 return
             return fn(driver, wait, *args, **kwargs)
         finally:
@@ -56,10 +73,33 @@ def _webjoint_session(fn):
     return wrapper
 
 
-# Orders page -> top row of the orders table (the most recently placed order)
-def _open_newest_order(wait):
-    click(wait, (By.XPATH, _ORDERS_NAV_XPATH))
-    click(wait, (By.XPATH, _NEWEST_ORDER_XPATH))
+# Opens one specific order by its WebJoint id (the "<company>-<facility>-
+# <customer>-<id>" string, same as in the URL) and checks that the order the
+# page shows really is that one; raises WrongOrderError otherwise.
+def _open_order(driver, wait, order_id: str):
+    if not order_id:
+        raise WrongOrderError(order_id, None)
+
+    # the nav drawer only exists once the login has finished; navigating
+    # before that would reload the page without a session
+    wait.until(EC.presence_of_element_located((By.XPATH, _ORDERS_NAV_XPATH)))
+
+    driver.get(f"{_WEBJOINT_URL}orders/{order_id}/show")
+    driver.refresh()  # only the #hash changed, so force a real page load
+
+    def shown_order_id(_):
+        for el in driver.find_elements(*_ORDER_TITLE):
+            match = _ORDER_TITLE_RE.search(el.text)
+            if match:
+                return match.group(1)
+        return False
+
+    try:
+        seen = wait.until(shown_order_id)
+    except TimeoutException:
+        raise WrongOrderError(order_id, None)
+    if seen != order_id:
+        raise WrongOrderError(order_id, seen)
 
 
 # Inventory -> a sub-page in its menu, e.g. "Products" or "Kits"
@@ -83,9 +123,9 @@ def _try_cancel(driver):
 
 
 @_webjoint_session
-def fill_order_notes(driver, wait, order_notes: str):
+def fill_order_notes(driver, wait, order_id: str, order_notes: str):
     try:
-        _open_newest_order(wait)
+        _open_order(driver, wait, order_id)
 
         # button is a child of the <p> containing "Order Notes" text
         click(wait, (By.XPATH, f'//p[{ci_contains("order notes", "text()")}]/button'))
@@ -99,16 +139,21 @@ def fill_order_notes(driver, wait, order_notes: str):
 
         time.sleep(2)
 
+    except WrongOrderError as e:
+        logger.error("fill_order_notes (order %s): wrote nothing: %s", order_id, e)
     except Exception as e:
-        logger.error("fill_order_notes: navigation/notes step failed: %s", e)
+        logger.error("fill_order_notes (order %s): navigation/notes step failed: %s", order_id, e)
 
 
 @_webjoint_session
-def pull_from_chiles(driver, wait):
+def pull_from_chiles(driver, wait, order_id: str):
     try:
-        _open_newest_order(wait)
+        _open_order(driver, wait, order_id)
+    except WrongOrderError as e:
+        logger.error("pull_from_chiles (order %s): changed nothing: %s", order_id, e)
+        return
     except Exception as e:
-        logger.error("pull_from_chiles: navigation failed: %s", e)
+        logger.error("pull_from_chiles (order %s): navigation failed: %s", order_id, e)
         return
 
     time.sleep(1)
@@ -217,7 +262,7 @@ def pull_from_chiles(driver, wait):
                 time.sleep(1)
 
             except Exception as e:
-                logger.error("pull_from_chiles: row %d failed: %s", idx, e)
+                logger.error("pull_from_chiles (order %s): row %d failed: %s", order_id, idx, e)
                 _try_cancel(driver)
 
         if kit_removals:
@@ -236,18 +281,18 @@ def pull_from_chiles(driver, wait):
                         remove_btn.click()
                         time.sleep(1)
                     except Exception as e:
-                        logger.error("pull_from_chiles: kit removal failed for %s from %s: %s", product_name, kit_name, e)
+                        logger.error("pull_from_chiles (order %s): kit removal failed for %s from %s: %s", order_id, product_name, kit_name, e)
             except Exception as e:
-                logger.error("pull_from_chiles: kit removal navigation failed: %s", e)
+                logger.error("pull_from_chiles (order %s): kit removal navigation failed: %s", order_id, e)
 
     except Exception as e:
-        logger.error("pull_from_chiles: row loop failed: %s", e)
+        logger.error("pull_from_chiles (order %s): row loop failed: %s", order_id, e)
 
 
 @_webjoint_session
-def dispatch_to_driver(driver, wait):
+def dispatch_to_driver(driver, wait, order_id: str):
     try:
-        _open_newest_order(wait)
+        _open_order(driver, wait, order_id)
 
         driver_button = wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/div/div[2]/div/div/div[2]/div/div/div[2]/table/tbody/tr/td[1]/div/label/span[1]/span[1]/input')))
         scroll_into_view(driver, driver_button)
@@ -265,8 +310,10 @@ def dispatch_to_driver(driver, wait):
         confirm_button.click()
         time.sleep(1)
 
+    except WrongOrderError as e:
+        logger.error("dispatch_to_driver (order %s): dispatched nothing: %s", order_id, e)
     except Exception as e:
-        logger.error("dispatch_to_driver: failed to click newest order: %s", e)
+        logger.error("dispatch_to_driver (order %s): dispatch failed: %s", order_id, e)
 
 
 # the dropdown option whose full rendered text exactly matches `text`, or None.
@@ -630,8 +677,8 @@ if __name__ == "__main__":
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'TGPFflows.settings')
     django.setup()
-    #pull_from_chiles()
-    #dispatch_to_driver()
+    #pull_from_chiles("<webjoint order id>")
+    #dispatch_to_driver("<webjoint order id>")
     #get_customer_info()
 
     test_list = [
