@@ -13,17 +13,16 @@ from django.views.decorators.http import require_http_methods
 
 # imports from project
 from django.conf import settings
-from orders.models import Driver, Order
+from orders.models import Driver, Order, OPEN_STATUSES, QUEUE_STATUSES, OrderStatus
 from orders.services.dispatch import (
     build_dispatch_msg_from_order, build_reschedule_msg_from_order,
     extract_msg_info, get_dispatch_msg, is_fsa_fsm, is_merchant_pay_customer,
     is_under_min, is_weedmaps_source,
 )
-from orders.services.scrapers.weedmaps import get_wm_payment_type
 from orders.services.note import get_order_notes
 from orders.tasks import (
-    create_product_task, dispatch_to_driver_task, fill_order_notes_task,
-    pull_from_chiles_task, send_merchant_pay_link_task, send_message_task,
+    create_product_task, fill_order_notes_task, prepare_order_task,
+    resolve_payment_type_task, send_merchant_pay_link_task, send_message_task,
 )
 from orders.services.invoice import extract_products_from_invoice
 from orders.services.time import parse_webhook_time
@@ -40,10 +39,12 @@ logger = logging.getLogger(__name__)
 
 # orders with a real ETA window still waiting on a dispatcher to approve/send
 def _pending_queryset():
-    return Order.objects.filter(completed=False, dispatch_sent=False, eta_start__isnull=False)
+    return Order.objects.filter(status__in=QUEUE_STATUSES, is_shell=False, eta_start__isnull=False)
 
+# status is the source of truth; dispatch_sent is kept written for one release
+# (rollback safety) and never read
 def _mark_dispatch_sent(order_id: str) -> None:
-    Order.objects.filter(order_id=order_id).update(dispatch_sent=True)
+    Order.objects.filter(order_id=order_id).update(status=OrderStatus.SENT, dispatch_sent=True)
 
 # queues a WebJoint Selenium task for exactly one order, identified by its
 # WebJoint id. Orders saved before webjoint_id existed (or from a payload
@@ -100,7 +101,7 @@ def clear_dispatch_queue_view(request):
     texting anyone or writing any WebJoint notes — a cleanup/testing utility,
     not a bulk-send. Real pending orders cleared this way never get their
     dispatch SMS, so the frontend confirms before submitting."""
-    _pending_queryset().update(dispatch_sent=True)
+    _pending_queryset().update(status=OrderStatus.SENT, dispatch_sent=True)
     return redirect("/")
 
 @login_required
@@ -172,6 +173,12 @@ def new_order(request):
     if delivery_key in BLOCKED_ADDRESSES and not is_third_st:
         return JsonResponse({"status": "ok"})
 
+    # WebJoint resends a webhook it thinks failed (e.g. after a timeout); the
+    # order is already saved and handled, so answer 200 and do nothing more
+    if Order.objects.filter(order_id=str(data["id"])).exists():
+        logger.info("duplicate webhook for order %s; ignored", data["id"])
+        return JsonResponse({"status": "ok"})
+
     # fields shared by storefront and delivery orders
     order_fields = dict(
         order_id=str(data["id"]),
@@ -196,15 +203,27 @@ def new_order(request):
     if not webjoint_id:
         logger.warning("new_order %s: webhook has no _id; WebJoint actions will be skipped", order_fields["order_id"])
 
+    # WebJoint's webhook always labels Weedmaps orders "Cash", so their real
+    # payment type is looked up on Weedmaps by a background task (below); until
+    # it lands the order's payment_type stays empty and the dashboard holds Send.
+    # In test mode nothing is scraped and the webhook's label is kept.
+    resolve_payment = False
+    weedmaps_order_id = ""
+    if is_weedmaps_source(data.get("source", "")) and not settings.RESTOCK_TEST_MODE:
+        resolve_payment = True
+        weedmaps_order_id = str(data.get("weedmapsOrderId") or "")
+
     add_order(
         order_city=data["shipping"]["city"],
         customer_phone=data["customer"]["phone"][1:],
         webjoint_id=webjoint_id,
+        weedmaps_order_id=weedmaps_order_id,
+        status=OrderStatus.AWAITING_PAYMENT if resolve_payment else OrderStatus.AWAITING_APPROVAL,
         **order_fields,
     )
     msg_dict = extract_msg_info(data)
-    if is_weedmaps_source(msg_dict["source"]) and not settings.RESTOCK_TEST_MODE:
-        msg_dict["pay_type"] = get_wm_payment_type(data.get("weedmapsOrderId"))
+    if resolve_payment:
+        msg_dict["pay_type"] = ""
     # always computed: sets order.eta_start/eta_end via get_eta (including any
     # scheduled-order override) and routes under-min vs normal internally. For
     # normal (has-ETA) orders the returned text is discarded below — the real
@@ -225,20 +244,25 @@ def new_order(request):
             _mark_dispatch_sent(msg_dict["id"])
         elif no_text:
             # excluded customer: we never text them, so there's nothing to hold
-            # for approval — write notes with the system-computed window now
-            order = Order.objects.get(order_id=msg_dict["id"])
-            _queue_webjoint(fill_order_notes_task, msg_dict["id"], webjoint_id, get_order_notes(order))
+            # for approval — write notes with the system-computed window now.
+            # For a Weedmaps order the note depends on the payment type, which
+            # isn't known yet, so resolve_payment_type_task writes it instead.
+            if not resolve_payment:
+                order = Order.objects.get(order_id=msg_dict["id"])
+                _queue_webjoint(fill_order_notes_task, msg_dict["id"], webjoint_id, get_order_notes(order))
             _mark_dispatch_sent(msg_dict["id"])
-        # else: normal dispatch with a real ETA window — leave dispatch_sent=False
+        # else: normal dispatch with a real ETA window — leave it awaiting approval
         # so it shows up in the Dispatch Queue tab for a human to approve/edit
         # and send (see send_dispatch_msg_view / send_reschedule_msg_view below).
 
         if is_merchant_pay_customer(msg_dict["name"], msg_dict["last_name"]) and not under_min:
             send_merchant_pay_link_task.delay()
 
-        _queue_webjoint(pull_from_chiles_task, msg_dict["id"], webjoint_id)
-        if data.get("status") == "Pending":
-            _queue_webjoint(dispatch_to_driver_task, msg_dict["id"], webjoint_id)
+        # first in the browser queue, since a dispatcher is waiting on it
+        if resolve_payment:
+            resolve_payment_type_task.delay(msg_dict["id"], write_notes=no_text and not under_min)
+        # pull the order's items, and dispatch it if it's still Pending
+        _queue_webjoint(prepare_order_task, msg_dict["id"], webjoint_id, data.get("status") == "Pending")
     return JsonResponse({"status": "ok"})
 
 @login_required
@@ -247,7 +271,21 @@ def send_dispatch_msg_view(request):
     order_id = request.POST.get("order_id")
     eta_start_str = request.POST.get("eta_start")
     eta_end_str = request.POST.get("eta_end")
-    order = get_object_or_404(Order, order_id=order_id, dispatch_sent=False)
+    order = get_object_or_404(Order, order_id=order_id, status__in=QUEUE_STATUSES)
+
+    if not order.payment_type:
+        # the payment type changes the price in the text; sending before it's
+        # known would quote the wrong total
+        if not request.POST.get("as_cash"):
+            logger.warning("send_dispatch_msg: order %s has no payment type yet; not sent", order_id)
+            return redirect("/")
+        order.payment_type = "Cash"
+        order.save()
+    elif request.POST.get("as_cash"):
+        # the lookup finished after this page loaded; show the real value first
+        logger.warning("send_dispatch_msg: order %s now has payment type %s; \"Send as cash\" ignored",
+                       order_id, order.payment_type)
+        return redirect("/")
 
     if eta_start_str and eta_end_str:
         base_date = order.eta_start.date() if order.eta_start else datetime.now().date()
@@ -266,7 +304,7 @@ def send_dispatch_msg_view(request):
 @require_http_methods(["POST"])
 def send_reschedule_msg_view(request):
     order_id = request.POST.get("order_id")
-    order = get_object_or_404(Order, order_id=order_id, dispatch_sent=False)
+    order = get_object_or_404(Order, order_id=order_id, status__in=QUEUE_STATUSES)
 
     if not settings.RESTOCK_TEST_MODE:
         send_message_task.delay(order.customer_phone, build_reschedule_msg_from_order(order))
@@ -291,14 +329,15 @@ def link_order_view(request):
     if not order_id or not primary_order_id:
         return redirect("/")
 
-    companion = get_object_or_404(Order, order_id=order_id, completed=False, dispatch_sent=False)
-    primary = get_object_or_404(Order, order_id=primary_order_id, completed=False, dispatch_sent=False)
+    companion = get_object_or_404(Order, order_id=order_id, status__in=QUEUE_STATUSES)
+    primary = get_object_or_404(Order, order_id=primary_order_id, status__in=QUEUE_STATUSES)
 
     if not is_fsa_fsm(companion.customer_name):
         return redirect("/")
 
     companion.linked_order = primary
-    companion.dispatch_sent = True
+    companion.status = OrderStatus.SENT
+    companion.dispatch_sent = True  # kept in step with status for one release; never read
     companion.save()
 
     if not settings.RESTOCK_TEST_MODE:
@@ -319,9 +358,11 @@ def unlink_order_view(request):
     if not order_id:
         return redirect("/")
 
-    companion = get_object_or_404(Order, order_id=order_id, completed=False)
+    companion = get_object_or_404(Order, order_id=order_id, status__in=OPEN_STATUSES)
     companion.linked_order = None
-    companion.dispatch_sent = False
+    # back in the queue; Send stays held if its payment type was never filled in
+    companion.status = OrderStatus.AWAITING_APPROVAL if companion.payment_type else OrderStatus.AWAITING_PAYMENT
+    companion.dispatch_sent = False  # kept in step with status for one release; never read
     companion.save()
     return redirect("/")
 

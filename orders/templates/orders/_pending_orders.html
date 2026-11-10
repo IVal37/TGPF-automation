@@ -9,6 +9,7 @@
         <span class="dispatch-city">{{ item.order.city }}</span>
       </div>
       <div class="dispatch-suggested">System suggested: {{ item.eta_start_value }}&ndash;{{ item.eta_end_value }}</div>
+      <div class="dispatch-payment">Payment: {% if item.order.payment_type %}{{ item.order.payment_type }}{% else %}checking&hellip;{% endif %}</div>
 
       {% if item.linked_companion %}
         <div class="dispatch-linked">
@@ -32,7 +33,10 @@
           <label for="end_{{ item.order.order_id }}">ETA end</label>
           <input type="time" step="900" id="end_{{ item.order.order_id }}" name="eta_end" value="{{ item.eta_end_value }}">
         </div>
-        <button class="btn-action" type="submit">Send</button>
+        <button class="btn-action" type="submit"{% if not item.order.payment_type %} disabled title="Waiting for the payment type"{% endif %}>Send</button>
+        {% if not item.order.payment_type %}
+          <button class="btn-action" type="submit" name="as_cash" value="1">Send as cash</button>
+        {% endif %}
       </form>
 
       {% if item.past_closing %}

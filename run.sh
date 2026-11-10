@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# One-command version of RUNBOOK.md: starts MySQL, Redis, the Celery worker,
-# Celery beat, and Django. Ctrl+C stops everything (Django runs in the
+# One-command version of RUNBOOK.md: starts MySQL, Redis, the two Celery workers
+# (default + browser), Celery beat, and Django. Ctrl+C stops everything (Django runs in the
 # foreground; the rest are background jobs killed on exit).
 #
 # Redis/Celery output goes to logs/ since they're backgrounded — tail those
@@ -40,9 +40,14 @@ else
     sleep 1
 fi
 
-# 3. Celery worker
-echo "Starting Celery worker..."
-celery -A TGPFflows worker --loglevel=info > "$LOG_DIR/celery_worker.log" 2>&1 &
+# 3. Celery workers: the default queue, and a separate single-job worker for
+# everything that drives a browser so two Chrome sessions never overlap
+echo "Starting Celery worker (default queue)..."
+celery -A TGPFflows worker -Q celery --loglevel=info > "$LOG_DIR/celery_worker.log" 2>&1 &
+PIDS+=($!)
+
+echo "Starting Celery browser worker (one job at a time)..."
+celery -A TGPFflows worker -Q browser -c 1 -n browser@%h --loglevel=info > "$LOG_DIR/celery_browser.log" 2>&1 &
 PIDS+=($!)
 
 # 4. Celery beat

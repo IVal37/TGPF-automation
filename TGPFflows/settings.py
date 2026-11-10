@@ -205,14 +205,38 @@ LOGGING = {
     },
 }
 
-# Celery — daily Telegram restock digests. Run alongside `manage.py runserver`:
+# Celery — browser work plus the daily Telegram restock digests. Run alongside
+# `manage.py runserver` (two workers: one for the default queue, one that runs
+# browser jobs strictly one at a time):
 #   redis-server
-#   celery -A TGPFflows worker --loglevel=info
+#   celery -A TGPFflows worker -Q celery --loglevel=info
+#   celery -A TGPFflows worker -Q browser -c 1 -n browser@%h --loglevel=info
 #   celery -A TGPFflows beat --loglevel=info
 
 CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = False
+
+# Every task that opens a Chrome session (WebJoint, TalkRoute, Weedmaps, merchant
+# pay) goes to the 'browser' queue, which a single-concurrency worker drains one
+# job at a time, so two sessions never hit the same account at once. Add any new
+# scraper-backed task here. The restock digests stay on the default queue.
+BROWSER_TASKS = (
+    'send_message_task',
+    'fill_order_notes_task',
+    'pull_from_chiles_task',
+    'dispatch_to_driver_task',
+    'prepare_order_task',
+    'resolve_payment_type_task',
+    'create_product_task',
+    'send_merchant_pay_link_task',
+)
+CELERY_TASK_ROUTES = {f'orders.tasks.{name}': {'queue': 'browser'} for name in BROWSER_TASKS}
+# one job per worker slot at a time, so a queued browser job is never held
+# back behind a long-running one on the same worker
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+# deliberately NOT acks_late: a task that dies mid-run must not be re-run, since
+# a re-run send_message_task would text the customer twice
 
 CELERY_BEAT_SCHEDULE = {
     # 3rd St storefront closes at 8:30pm every day

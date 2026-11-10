@@ -1,12 +1,12 @@
-One command, does all 5 below (Ctrl+C stops everything):
+One command, starts everything below (Ctrl+C stops everything):
 
     ./run.sh
 
-Redis/Celery output is backgrounded to logs/ since run.sh only shows Django directly — tail those if something looks off, e.g. `tail -f logs/celery_worker.log`.
+Redis/Celery output is backgrounded to logs/ since run.sh only shows Django directly — tail those if something looks off, e.g. `tail -f logs/celery_browser.log` (browser jobs) or `logs/celery_worker.log`.
 
-Manual steps below — same 5 things, useful if you need to restart just one piece without killing the rest.
+Manual steps below — same things (the Celery worker is two processes), useful if you need to restart just one piece without killing the rest.
 
-Before all 5, once per shell:
+Before all of them, once per shell:
 
     cd /home/izaak/TGPFflows && source .venv/bin/activate
 
@@ -16,8 +16,11 @@ Before all 5, once per shell:
 2. Redis
     redis-server
 
-3. Celery worker
-    celery -A TGPFflows worker --loglevel=info
+3. Celery workers (two terminals). The first runs the default queue; the second runs every
+   browser job (WebJoint, TalkRoute, Weedmaps, merchant pay) one at a time. If the browser
+   worker is not running, those jobs wait silently in Redis and nothing is texted or noted.
+    celery -A TGPFflows worker -Q celery --loglevel=info
+    celery -A TGPFflows worker -Q browser -c 1 -n browser@%h --loglevel=info
 
 4. Celery beat
     celery -A TGPFflows beat --loglevel=info

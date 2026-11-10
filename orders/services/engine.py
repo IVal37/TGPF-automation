@@ -45,9 +45,11 @@ def _untrack_order(order_id: str) -> int:
     orders_by_id.pop(order_id)
     return driver_id_by_order_id.pop(order_id)
 
-# mark an order finished in the DB (used for completes, cancels, and shells)
-def _close_order_in_db(order_id: str) -> None:
-    Order.objects.filter(order_id=order_id).update(completed=True, driver=None)
+# mark an order finished in the DB (used for completes, cancels, and shells).
+# status is the source of truth; `completed` is kept written (True for both
+# completed and cancelled, as before) for one release and never read.
+def _close_order_in_db(order_id: str, status: str = Order.Status.COMPLETED) -> None:
+    Order.objects.filter(order_id=order_id).update(status=status, completed=True, driver=None)
 
 def _move_driver(driver_id: int, city: str) -> None:
     if driver_id in drivers_by_id:
@@ -57,7 +59,7 @@ def _move_driver(driver_id: int, city: str) -> None:
 def _find_shell(city: str, driver_id: Optional[int] = None) -> Optional[str]:
     return next(
         (oid for oid in list(orders_by_id)
-         if oid.startswith("shell_") and orders_by_id[oid].get_city() == city
+         if orders_by_id[oid].is_shell and orders_by_id[oid].get_city() == city
          and (driver_id is None or driver_id_by_order_id.get(oid) == driver_id)),
         None
     )
@@ -87,12 +89,16 @@ def add_order(
     delivery_fee: Decimal = Decimal("0"),
     items: list = None,
     webjoint_id: str = "",
+    weedmaps_order_id: str = "",
+    status: str = Order.Status.AWAITING_APPROVAL,
 ) -> None:
     assigned_driver: Driver = _pick_driver(order_city)
 
     order = Order(
         order_id=order_id,
         webjoint_id=webjoint_id,
+        weedmaps_order_id=weedmaps_order_id,
+        status=status,
         customer_name=customer_name,
         customer_phone=customer_phone,
         city=order_city,
@@ -132,6 +138,8 @@ def add_storefront_order(
         subtotal=subtotal,
         total=total,
         delivery_fee=delivery_fee,
+        status=Order.Status.STOREFRONT,
+        # kept in step with status for one release; never read
         completed=True,
         dispatch_sent=True,
         is_storefront=True,
@@ -183,13 +191,17 @@ def add_shell_order(city: str) -> None:
         order_id=order_id,
         city=city,
         order_date=datetime.now(),
+        is_shell=True,
+        # a shell is with a driver and never queued
+        status=Order.Status.SENT,
+        dispatch_sent=True,
     )
     order.save()
     _assign_order(order, assigned_driver)
 
 # cancel order and remove from associated data structures (no restock capture)
 def cancel_order(order_id: str) -> None:
-    _close_order_in_db(order_id)
+    _close_order_in_db(order_id, Order.Status.CANCELLED)
 
     if order_id in driver_id_by_order_id:
         city = orders_by_id[order_id].get_city()

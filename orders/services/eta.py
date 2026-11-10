@@ -39,7 +39,7 @@ def get_eta(order_id: str):
     clamped_eta = max(order_created_time + timedelta(minutes=30), min(raw_eta, order_created_time + timedelta(hours=2)))
 
     # window: 90 mins if more than 5 real (non-shell) active orders, otherwise 60 mins
-    real_order_count = sum(1 for oid in orders_by_id if not oid.startswith("shell_"))
+    real_order_count = sum(1 for order in orders_by_id.values() if not order.is_shell)
     window_mins: int = 90 if real_order_count > 5 else 60
 
     # slide the anchor from window-start (1st stop on the route) toward window-middle (later stops)

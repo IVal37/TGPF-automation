@@ -35,11 +35,26 @@ class Driver(models.Model):
 
 
 class Order(models.Model):
+    class Status(models.TextChoices):
+        # Weedmaps order whose payment type is still being looked up
+        AWAITING_PAYMENT = "awaiting_payment", "Awaiting payment"
+        # in the Dispatch Queue for a dispatcher to approve and send
+        AWAITING_APPROVAL = "awaiting_approval", "Awaiting approval"
+        # dispatch text sent (or never needed); the order is out with a driver
+        SENT = "sent", "Sent"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+        # walk-in 3rd St sale, finished when rung up
+        STOREFRONT = "storefront", "Storefront"
+
     order_id = models.CharField(max_length=100, unique=True)
     # WebJoint's string key for the order (<company>-<facility>-<customer>-<id>),
     # used to open exactly this order in the WebJoint admin; blank for orders
     # created before it was stored
     webjoint_id = models.CharField(max_length=100, blank=True)
+    # the number Weedmaps shows as "#49018286" (the webhook's weedmapsOrderId);
+    # blank for orders that did not come through Weedmaps
+    weedmaps_order_id = models.CharField(max_length=20, blank=True)
     customer_name = models.CharField(max_length=255, blank=True)
     customer_phone = models.CharField(max_length=20, blank=True)
     city = models.CharField(max_length=255)
@@ -56,6 +71,15 @@ class Order(models.Model):
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    status = models.CharField(
+        max_length=20, choices=Status.choices,
+        default=Status.AWAITING_APPROVAL, db_index=True,
+    )
+    # placeholder order (city only) that tracks where a driver is heading
+    is_shell = models.BooleanField(default=False)
+    # completed / dispatch_sent / is_storefront are kept written in step with
+    # status for one release (so a rollback still works) but are never read:
+    # use status and is_shell
     completed = models.BooleanField(default=False)
     dispatch_sent = models.BooleanField(default=False)
     is_storefront = models.BooleanField(default=False)
@@ -94,3 +118,11 @@ class OrderItem(models.Model):
 
     def __str__(self):
         return f"{self.product_name} (x{self.quantity})"
+
+
+OrderStatus = Order.Status
+
+# statuses that are still in the Dispatch Queue (waiting on a dispatcher)
+QUEUE_STATUSES = (OrderStatus.AWAITING_PAYMENT, OrderStatus.AWAITING_APPROVAL)
+# statuses that are still open: queued, or sent and out with a driver
+OPEN_STATUSES = QUEUE_STATUSES + (OrderStatus.SENT,)
