@@ -12,7 +12,7 @@ from django.utils import timezone
 # imports from project
 from orders.models import Order, OrderItem, Driver, OrderStatus, QUEUE_STATUSES
 from orders.services import queries
-from orders.constants import get_travel_time
+from orders.services.travel import get_travel_time
 
 logger = logging.getLogger(__name__)
 

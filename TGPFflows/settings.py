@@ -254,6 +254,10 @@ CELERY_BEAT_SCHEDULE = {
     },
 }
 
+# Google Maps Distance Matrix key for real driving times (orders/services/travel.py).
+# Unset: the stored travel-time table is used and nothing is sent to Google.
+GOOGLE_MAPS_API_KEY = os.environ.get('GOOGLE_MAPS_API_KEY', '')
+
 # screenshots and page sources saved when a browser scraper fails; deleted after
 # 14 days. Under the gitignored logs/ directory because pages can show customer details.
 FAILURE_DIR = BASE_DIR / 'logs' / 'failures'

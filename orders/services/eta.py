@@ -8,7 +8,8 @@ from orders.services import queries
 from orders.services.engine import get_driver_city_queues
 from orders.services.time import round_time, format_time
 from orders.services.hours import clamp_to_opening
-from orders.constants import _DELIVERY_TIME, get_travel_time
+from orders.constants import _DELIVERY_TIME
+from orders.services.travel import get_travel_time
 
 # a customer who picked a delivery window gets that window when it is no earlier
 # than the system's own estimate. Saves it on the order; returns whether it applied.

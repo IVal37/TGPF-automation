@@ -27,7 +27,7 @@ from orders.tasks import (
 )
 from orders.services.invoice import extract_products_from_invoice
 from orders.services.time import parse_webhook_time
-from orders.constants import BLOCKED_ADDRESSES, CITY_MINS
+from orders.services import config
 from orders.services.hours import is_past_closing
 from orders.services.engine import (
     add_driver, add_order, add_shell_order, add_storefront_order,
@@ -169,7 +169,7 @@ def order_list(request):
         'active_drivers': list(queries.active_drivers()),
         'drivers': _driver_panel(),
         'notices': Notice.objects.filter(dismissed=False).order_by('-created_at')[:10],
-        'cities': sorted(CITY_MINS.keys()),
+        'cities': config.cities(),
         'pending_orders': pending_orders,
     })
 
@@ -253,7 +253,7 @@ def assign_driver_view(request):
 
     assign_order(order.order_id, driver.pk)
 
-    if was_queued and _is_no_text(order.customer_name) and not settings.RESTOCK_TEST_MODE:
+    if was_queued and config.is_no_text_customer(order.customer_name) and not settings.RESTOCK_TEST_MODE:
         # new_order skipped this customer's notes while there was no driver/ETA
         fresh = Order.objects.get(order_id=order.order_id)
         if fresh.payment_type:
@@ -293,29 +293,18 @@ def legacy_webhook(request):
     logger.warning("webhook hit on retired path %s from %s", request.path, client_ip(request))
     return HttpResponseForbidden()
 
-# the one hardcoded customer we never text
-def _is_no_text(customer_name: str) -> bool:
-    return customer_name.strip().lower() == "mohsen awara"
-
 @csrf_exempt
 @require_webhook_key
 @require_http_methods(["POST"])
 def new_order(request):
     data = json.loads(request.body)
-    shipping = data.get("shipping", {})
-    full_street = f"{shipping.get('number', '').strip()} {shipping.get('street', '').strip()}".strip()
-    delivery_key = (full_street, shipping.get("zip", "").strip())
-    street_lower = shipping.get('street', '').strip().lower()
-    is_third_st = (
-        shipping.get('number', '').strip() == '526'
-        and shipping.get('city', '').strip() == 'Davis'
-        and any(w in street_lower for w in ('third', '3rd'))
-    )
-    # BLOCKED_ADDRESSES stays a general "don't create an order at all" list for
-    # anything else that ends up in it — 3rd St gets its own explicit routing
-    # below instead, since (unlike a truly blocked address) it's a real sale
-    # that needs to be tracked for the storefront restock digest.
-    if delivery_key in BLOCKED_ADDRESSES and not is_third_st:
+    # special addresses live in the database (SpecialAddress, edited in admin): a
+    # "blocked" one means don't create an order at all; the "storefront" (3rd St) is
+    # a real sale that still needs tracking for the storefront restock digest, so it
+    # gets its own routing below (it always wins over blocked)
+    special_address = config.match_special_address(data.get("shipping", {}))
+    is_third_st = special_address == "storefront"
+    if special_address == "blocked":
         return JsonResponse({"status": "ok"})
 
     # WebJoint resends a webhook it thinks failed (e.g. after a timeout); the
@@ -379,7 +368,7 @@ def new_order(request):
     msg_dict = extract_msg_info(data)
     if resolve_payment:
         msg_dict["pay_type"] = ""
-    no_text = _is_no_text(data["customer"]["name"])
+    no_text = config.is_no_text_customer(data["customer"]["name"])
     under_min = is_under_min(msg_dict)
     # sets order.eta_start/eta_end via get_eta (including any scheduled-order
     # override) and routes under-min vs normal internally. For normal (has-ETA)

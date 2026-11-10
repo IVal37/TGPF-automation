@@ -1,10 +1,11 @@
 # imports from std lib
 from decimal import Decimal
-from collections import defaultdict
-from typing import DefaultDict, Tuple
 
-_DEFAULT_TRAVEL_TIME = 30
-_SAME_CITY_TRAVEL_TIME = 15
+# Business config that varies by city, customer, address or route (city minimums,
+# merchant-pay / no-text customers, blocked and storefront addresses, travel times)
+# lives in the database: see orders/services/config.py and orders/services/travel.py,
+# and edit it in Django admin.
+
 _DELIVERY_TIME = 5
 _BUFFER_TIME = 10
 
@@ -15,85 +16,9 @@ CARD_FEE_MULTIPLIER = Decimal("1.03")
 # (e.g. "External") is a Weedmaps order
 DIRECT_SOURCES = ("POS", "Website")
 
-CITY_MINS = {
-    "American Canyon": Decimal("125.00"),
-    "Brooks": Decimal("200.00"),
-    "Davis": Decimal("25.00"),
-    "Dixon": Decimal("35.00"),
-    "Dunnigan": Decimal("200.00"),
-    "East Sacramento": Decimal("75.00"),
-    "Elk Grove": Decimal("65.00"),
-    "Esparto": Decimal("100.00"),
-    "Fairfield": Decimal("55.00"),
-    "Guinda": Decimal("250.00"),
-    "Knights Landing": Decimal("125.00"),
-    "Midtown Sacramento": Decimal("65.00"),
-    "Roseville": Decimal("175.00"),
-    "Rocklin": Decimal("175.00"),
-    "South Sacramento": Decimal("100.00"),
-    "Suisun City": Decimal("60.00"),
-    "Vacaville": Decimal("45.00"),
-    "Vallejo": Decimal("125.00"),
-    "West Sacramento": Decimal("55.00"),
-    "Winters": Decimal("55.00"),
-    "Woodland": Decimal("35.00"),
-}
-
-MERCHANT_PAY_CUSTOMERS = (
-    "Imran Rahim",
-    "Emmi Towns",
-    "Chelsea Rosenkild"
-)
-
 # placeholder accounts used for a second adult on a legal-limit split order,
 # or (unrelated to that) a lazy walk-in sale at 3rd St — see dispatch.is_fsa_fsm
 FSA_FSM_NAMES = {"frank sinatra adult", "frank sinatra medical"}
-
-# returns TRAVEL_TIME dict populated in both directions
-def symmetrize(base_dict: DefaultDict[Tuple[str, str], int]) -> DefaultDict:
-    symetric_dict: DefaultDict[Tuple[str, str], int] = defaultdict(lambda: _DEFAULT_TRAVEL_TIME, {})
-
-    for (a, b), mins in base_dict.items():
-        symetric_dict[(a, b)] = mins
-        symetric_dict[(b, a)] = mins
-        symetric_dict[(a, a)] = _SAME_CITY_TRAVEL_TIME
-        symetric_dict[(b, b)] = _SAME_CITY_TRAVEL_TIME
-
-    return symetric_dict
-
-TRAVEL_TIME: DefaultDict[Tuple[str, str], int] = symmetrize(defaultdict(
-    lambda: _DEFAULT_TRAVEL_TIME,
-    {
-        ("Davis", "Dixon"): 15,
-        ("Davis", "Fairfield"): 40,
-        ("Davis", "Vacaville"): 35,
-        ("Davis", "Winters"): 30,
-        ("Davis", "Woodland"): 20,
-
-        ("Dixon", "Fairfield"): 25,
-        ("Dixon", "Vacaville"): 20,
-        ("Dixon", "Winters"): 20,
-        ("Dixon", "Woodland"): 25,
-
-        ("Fairfield", "Vacaville"): 15,
-        ("Fairfield", "Winters"): 25,
-        ("Fairfield", "Woodland"): 45,
-        
-        ("Vacaville", "Winters"): 25,
-        ("Vacaville", "Woodland"): 30,
-
-        ("Winters", "Woodland"): 30
-    }
-))
-
-def get_travel_time(city_a: str, city_b: str) -> int:
-    if city_a == city_b:
-        return _SAME_CITY_TRAVEL_TIME
-    return TRAVEL_TIME.get((city_a, city_b), _DEFAULT_TRAVEL_TIME)
-
-BLOCKED_ADDRESSES = {
-    ("526 3rd Street", "95616"),
-}
 
 VALEDICTIONS = [
                     'Thanks again for your order!', 

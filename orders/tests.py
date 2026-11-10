@@ -220,7 +220,7 @@ class TestUnderMinMsg(SimpleTestCase):
 
 # ── normal_dispatch_msg ───────────────────────────────────────────────────────
 
-class TestNormalDispatchMsg(SimpleTestCase):
+class TestNormalDispatchMsg(TestCase):  # config (city minimums, flagged customers, special addresses) is read from the database
     def _eta(self):
         return patch("orders.services.dispatch.get_eta", return_value=("2:30", "3:30"))
 
@@ -257,7 +257,7 @@ class TestNormalDispatchMsg(SimpleTestCase):
 
 # ── get_dispatch_msg routing ──────────────────────────────────────────────────
 
-class TestGetDispatchMsgRouting(SimpleTestCase):
+class TestGetDispatchMsgRouting(TestCase):  # config (city minimums, flagged customers, special addresses) is read from the database
     def _eta(self):
         return patch("orders.services.dispatch.get_eta", return_value=("2:30", "3:30"))
 
@@ -282,7 +282,7 @@ class TestGetDispatchMsgRouting(SimpleTestCase):
 
 # ── new_order view ────────────────────────────────────────────────────────────
 
-class TestNewOrderView(SimpleTestCase):
+class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, special addresses) is read from the database
     def setUp(self):
         self.factory = RequestFactory()
 
@@ -1521,7 +1521,7 @@ class TestQueueUsesStatus(TestCase):
         self.assertEqual(Order.objects.get(order_id="w1").status, Order.Status.SENT)
 
 
-class TestNewOrderStatus(SimpleTestCase):
+class TestNewOrderStatus(TestCase):  # config (city minimums, flagged customers, special addresses) is read from the database
     """The initial status new_order hands to add_order (reuses TestNewOrderView's mocks)."""
     _run = TestNewOrderView._run
     _post = TestNewOrderView._post

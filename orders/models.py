@@ -169,3 +169,74 @@ class Notice(models.Model):
 
     def __str__(self):
         return self.message[:60]
+
+
+# ── Business config (editable in Django admin) ────────────────────────────────
+
+# a city we deliver to and its order minimum (before taxes, after discounts)
+class City(models.Model):
+    name = models.CharField(max_length=255, unique=True)
+    minimum = models.DecimalField(max_digits=10, decimal_places=2)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "cities"
+
+    def __str__(self):
+        return f"{self.name} (${self.minimum})"
+
+
+# special handling for named customers: gets the merchant-pay link, or is never texted
+class CustomerFlag(models.Model):
+    name = models.CharField(max_length=255, help_text='Full name, e.g. "Imran Rahim"')
+    merchant_pay = models.BooleanField(default=False)
+    no_text = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+# a delivery address that is not a normal customer: "blocked" orders are ignored
+# entirely, "storefront" orders are walk-in sales at the store. A row matches
+# when the number is equal, the street contains street_contains (any case), and
+# the city and zip are equal (blank = any).
+class SpecialAddress(models.Model):
+    class Kind(models.TextChoices):
+        BLOCKED = "blocked", "Blocked (ignore the order)"
+        STOREFRONT = "storefront", "Storefront (walk-in sale)"
+
+    number = models.CharField(max_length=20)
+    street_contains = models.CharField(max_length=255)
+    city = models.CharField(max_length=255, blank=True)
+    zip = models.CharField(max_length=20, blank=True)
+    kind = models.CharField(max_length=20, choices=Kind.choices)
+
+    class Meta:
+        verbose_name_plural = "special addresses"
+
+    def __str__(self):
+        return f"{self.number} …{self.street_contains}… {self.city} {self.zip} ({self.kind})".replace("  ", " ")
+
+
+# minutes to drive between two cities. Each pair is stored once with the names in
+# alphabetical order (use orders.services.travel.get_travel_time to look one up).
+class TravelTime(models.Model):
+    class Source(models.TextChoices):
+        STATIC = "static", "Static (typed in)"
+        GOOGLE = "google", "Google Maps"
+
+    city_a = models.CharField(max_length=255)
+    city_b = models.CharField(max_length=255)
+    minutes = models.PositiveIntegerField()
+    source = models.CharField(max_length=10, choices=Source.choices, default=Source.STATIC)
+    fetched_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["city_a", "city_b"]
+        constraints = [models.UniqueConstraint(fields=["city_a", "city_b"], name="unique_travel_pair")]
+
+    def __str__(self):
+        return f"{self.city_a} - {self.city_b}: {self.minutes} min ({self.source})"

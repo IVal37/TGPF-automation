@@ -5,12 +5,13 @@ from datetime import datetime
 
 # imports from project
 from orders.models import Order
+from orders.services import config
 from orders.services.money import round_money
 from orders.services.eta import apply_scheduled_window, get_eta
 from orders.services.time import format_time, parse_webhook_time
 from orders.services.hours import closing_dt
 from orders.constants import (
-    CARD_FEE_MULTIPLIER, CITY_MINS, DIRECT_SOURCES, FSA_FSM_NAMES, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS,
+    CARD_FEE_MULTIPLIER, DIRECT_SOURCES, FSA_FSM_NAMES, VALEDICTIONS,
 )
 
 # is this the "Frank Sinatra Adult"/"Frank Sinatra Medical" placeholder
@@ -20,7 +21,7 @@ def is_fsa_fsm(customer_name: str) -> bool:
     return customer_name.strip().lower() in FSA_FSM_NAMES
 
 def is_merchant_pay_customer(name: str, last_name: str) -> bool:
-    return f"{name} {last_name}" in MERCHANT_PAY_CUSTOMERS
+    return config.is_merchant_pay_customer(name, last_name)
 
 # did this order come through Weedmaps rather than our own POS/website?
 def is_weedmaps_source(source: str) -> bool:
@@ -78,7 +79,7 @@ def get_dispatch_msg(dict):
     return normal_dispatch_msg(dict)
 
 def _city_min(dict):
-    return CITY_MINS.get(dict["city"], Decimal("0.00"))
+    return config.city_min(dict["city"])
 
 def is_under_min(dict):
     return CalculateForMinCheck(dict) <= _city_min(dict)
