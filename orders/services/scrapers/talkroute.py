@@ -7,12 +7,18 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
 # imports from project
-from orders.services.scrapers.browser import BLOCK, click, create_driver, fill
+from orders.services.scrapers.browser import BLOCK, browser_session, click, click_at_commit, fill
+from orders.services.scrapers.errors import at_commit, before_commit
 
-def send_message(customer_number: str, dispatch_msg: str):
-    driver, wait = create_driver({"profile.default_content_setting_values.media_stream_mic": BLOCK})
-
-    try:
+# The commit point is the click on "send" (message-input-send). Everything before
+# it raises BeforeCommitError, so the task retries safely; a failure at or after
+# it propagates as-is and is never retried automatically (the text may be out).
+# The login and the first-time setup modals are optional and stay swallowed.
+# order_ref names the order in failure logs/screenshots (never the phone number).
+def send_message(customer_number: str, dispatch_msg: str, order_ref=None):
+    with browser_session(
+        "send_message", order_ref, {"profile.default_content_setting_values.media_stream_mic": BLOCK},
+    ) as (driver, wait):
         driver.get("https://my.talkroute.com/home/text_messages/")
 
         # initial login
@@ -57,22 +63,21 @@ def send_message(customer_number: str, dispatch_msg: str):
             pass
         '''
         # send message
-        try:
+        send_locator = (By.CLASS_NAME, "message-input-send")
+        with before_commit("compose message"):
             click(wait, (By.ID, "navigation-messages-item"))
             click(wait, (By.XPATH, '//*[@id="root"]/div/div/div[2]/div/div[1]/div/div[1]/div/div[1]/button'))
             fill(wait, (By.ID, "conversations-to-phone-number-input"), customer_number)
             fill(wait, (By.CLASS_NAME, "message-input.text-message-input"), dispatch_msg)
-            click(wait, (By.CLASS_NAME, "message-input-send"))
-            
-            time.sleep(5)
-        except Exception:
-            pass       
+            send_button = wait.until(EC.element_to_be_clickable(send_locator))
 
-    finally:
-        driver.quit()
+        with at_commit("send message"):
+            click_at_commit(wait, send_locator, send_button)
+
+            time.sleep(5)
 
 def send_testing_message():
-    send_message(os.environ.get('TALKROUTE_TEST_PHONE', ''), "testing")
+    send_message(os.environ.get('TALKROUTE_TEST_PHONE', ''), "testing", order_ref="test")
 
 if __name__ == "__main__":
     import sys

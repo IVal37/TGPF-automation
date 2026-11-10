@@ -2,8 +2,6 @@
 import imaplib, email, re, time, os
 
 IMAP_HOST = "imap.gmail.com"
-IMAP_USER = os.environ.get('MERCHANT_PAY_IMAP_USER', '')
-IMAP_PASS = os.environ.get('MERCHANT_PAY_IMAP_PASS', '')
 
 # sender of GBX MerchantPay's "One-time verification code" email
 CODE_SENDER = "donotreply@greenbaxmarketplace.io"
@@ -11,9 +9,12 @@ CODE_SENDER = "donotreply@greenbaxmarketplace.io"
 CODE_RE = re.compile(r"\b(\d{6})\b")
 
 def FetchCode(timeout=120, poll=5):
+    # read when called, not at import, so a .env loaded after this module is imported still counts
+    imap_user = os.environ.get('MERCHANT_PAY_IMAP_USER', '')
+    imap_pass = os.environ.get('MERCHANT_PAY_IMAP_PASS', '')
     end = time.time() + timeout
     with imaplib.IMAP4_SSL(IMAP_HOST) as M:
-        M.login(IMAP_USER, IMAP_PASS)
+        M.login(imap_user, imap_pass)
         while time.time() < end:
             M.select("INBOX")
             typ, data = M.search(None, f'UNSEEN FROM "{CODE_SENDER}"')

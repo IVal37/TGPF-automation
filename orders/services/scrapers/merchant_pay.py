@@ -6,7 +6,7 @@ import time
 logger = logging.getLogger(__name__)
 
 # imports from project
-from orders.services.scrapers.browser import click, create_driver, fill, scroll_into_view
+from orders.services.scrapers.browser import browser_session, click, fill, scroll_into_view
 from orders.services.scrapers.merchant_pay_helper import FetchCode as GetCode
 
 # imports from selenium
@@ -14,9 +14,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
 def send_merchant_pay_link():
-    driver, wait = create_driver()
-
-    try:
+    with browser_session("send_merchant_pay_link") as (driver, wait):
         driver.get("https://merchantpay.greenbaxmarketplace.io/login")
 
         try:          
@@ -46,9 +44,6 @@ def send_merchant_pay_link():
                 logger.error("send_merchant_pay_link: 2FA verification step failed: %s", e)
 
         time.sleep(5)
-
-    finally:
-        driver.quit()
 
 if __name__ == "__main__":
     from dotenv import load_dotenv

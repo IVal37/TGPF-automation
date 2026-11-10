@@ -1,0 +1,136 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {
+    "prefs": {
+     "profile.default_content_setting_values.notifications": 2
+    }
+   }
+  }
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/"
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c13",
+  [
+   "fake-webjoint-email"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c202.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c202.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c202.c13",
+  [
+   "fake-webjoint-password"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c230.c204.c206.c209.c15"
+ ],
+ [
+  "click",
+  "class name=c230.c204.c206.c209.c15"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/orders/1111-2222-3333333-4444444/show"
+ ],
+ [
+  "refresh"
+ ],
+ [
+  "find_elements",
+  "css selector",
+  "[data-test=\"page-title\"]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//p[contains(translate(text(), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \"order notes\")]/button"
+ ],
+ [
+  "click",
+  "xpath=//p[contains(translate(text(), \"ABCDEFGHIJKLMNOPQRSTUVWXYZ\", \"abcdefghijklmnopqrstuvwxyz\"), \"order notes\")]/button"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]"
+ ],
+ [
+  "clear",
+  "xpath=/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]"
+ ],
+ [
+  "send_keys",
+  "xpath=/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]",
+  [
+   "test note"
+  ]
+ ],
+ [
+  "find_element",
+  "xpath",
+  "/html/body/div[4]/div[2]/div[2]/form/div[2]/button"
+ ],
+ [
+  "click",
+  "xpath=/html/body/div[4]/div[2]/div[2]/form/div[2]/button"
+ ],
+ [
+  "save_screenshot",
+  "fill_order_notes-1111-2222-3333333-4444444-20260720-140000.png"
+ ],
+ [
+  "page_source"
+ ],
+ [
+  "log",
+  "ERROR",
+  "fill_order_notes (order 1111-2222-3333333-4444444): failed at step 'save notes': save click failed"
+ ],
+ [
+  "quit"
+ ],
+ [
+  "raised",
+  "RuntimeError",
+  "save notes",
+  "save click failed"
+ ],
+ [
+  "return",
+  null
+ ]
+]

@@ -11,12 +11,19 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # imports from project
-from orders.services.scrapers.browser import click, create_driver, fill
+from orders.services.scrapers.browser import browser_session, click, fill
+from orders.services.scrapers.errors import BeforeCommitError
 
 # weedmaps_order_id is the number Weedmaps shows as "#49018286"; WebJoint's
 # webhook carries it as "weedmapsOrderId". We open exactly that order, and only
-# read a payment type once its page confirms it is that order — otherwise we
-# fall back to "Cash" instead of reading some other customer's order.
+# read a payment type once its page confirms it is that order.
+#
+# This scraper is read-only (the "Confirm & start preparing" click only starts
+# prep and stays as it is), so there is no commit point: any failure to find
+# the order or read its payment type raises BeforeCommitError and the task
+# retries. Without a Weedmaps number there is nothing to look up and it returns
+# "Cash" with no browser. The order stays "Payment: checking..." on the
+# dashboard after a final failure, where "Send as cash" is still available.
 def get_wm_payment_type(weedmaps_order_id):
     payment_type = "Cash"
 
@@ -24,9 +31,8 @@ def get_wm_payment_type(weedmaps_order_id):
         logger.warning("get_wm_payment_type: no Weedmaps order id in the webhook; defaulting to Cash")
         return regularize_type(payment_type)
 
-    driver, wait = create_driver()
-
-    try:
+    failure = None
+    with browser_session("get_wm_payment_type", f"wm{weedmaps_order_id}") as (driver, wait):
         driver.get("https://weedmaps.com/login?return_url=https://admin.weedmaps.com/orders")
 
         # intial login
@@ -54,9 +60,10 @@ def get_wm_payment_type(weedmaps_order_id):
             order_opened = True
         except Exception as e:
             logger.warning(
-                "get_wm_payment_type (Weedmaps order %s): order not found or page is another order; "
-                "defaulting to Cash (%s)", weedmaps_order_id, type(e).__name__,
+                "get_wm_payment_type (Weedmaps order %s): order not found or page is another order (%s)",
+                weedmaps_order_id, type(e).__name__,
             )
+            failure = BeforeCommitError("open Weedmaps order", e)
 
         if order_opened:
             # first-time orders show a verification screen that hides payment info —
@@ -75,14 +82,14 @@ def get_wm_payment_type(weedmaps_order_id):
             try:
                 payment_type_field = wait.until(EC.presence_of_element_located((By.XPATH , '//*[@id="__next"]/div/div[2]/div/div[3]/div[3]/div[1]/div[1]/div/div/div[4]/div[1]/p[1]')))
                 payment_type = payment_type_field.text
+            except Exception as e:
+                failure = BeforeCommitError("read payment type", e)
 
-            except Exception:
-                pass
-
+        # the wait after the lookup is kept whether or not it worked, as before
         time.sleep(5)
 
-    finally:
-        driver.quit()
+        if failure is not None:
+            raise failure
 
     return regularize_type(payment_type)
 

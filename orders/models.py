@@ -45,6 +45,9 @@ class Order(models.Model):
         AWAITING_PAYMENT = "awaiting_payment", "Awaiting payment"
         # in the Dispatch Queue for a dispatcher to approve and send
         AWAITING_APPROVAL = "awaiting_approval", "Awaiting approval"
+        # the dispatch text is queued or being sent; set before the send task runs
+        # and moved to SENT by it, so a second Send can't text the customer twice
+        SENDING = "sending", "Sending"
         # dispatch text sent (or never needed); the order is out with a driver
         SENT = "sent", "Sent"
         COMPLETED = "completed", "Completed"
@@ -84,6 +87,16 @@ class Order(models.Model):
         max_length=20, choices=Status.choices,
         default=Status.AWAITING_APPROVAL, db_index=True,
     )
+    # the last browser task for this order that failed for good (after its
+    # automatic retries), shown on the dispatch card with Retry / Dismiss.
+    # last_error_task + last_error_args let Retry re-queue the same task;
+    # last_error_after_commit means it failed at or after the irreversible
+    # click, so it may have gone through and Retry asks for a confirm
+    last_error = models.TextField(blank=True)
+    last_error_at = models.DateTimeField(null=True, blank=True)
+    last_error_task = models.CharField(max_length=100, blank=True)
+    last_error_args = models.JSONField(default=dict, blank=True)
+    last_error_after_commit = models.BooleanField(default=False)
     # placeholder order (city only) that tracks where a driver is heading
     is_shell = models.BooleanField(default=False)
     # completed / dispatch_sent / is_storefront are kept written in step with
@@ -139,4 +152,20 @@ OrderStatus = Order.Status
 # statuses that are still in the Dispatch Queue (waiting on a dispatcher)
 QUEUE_STATUSES = (OrderStatus.AWAITING_PAYMENT, OrderStatus.AWAITING_APPROVAL)
 # statuses that are still open: queued, or sent and out with a driver
-OPEN_STATUSES = QUEUE_STATUSES + (OrderStatus.SENT,)
+OPEN_STATUSES = QUEUE_STATUSES + (OrderStatus.SENDING, OrderStatus.SENT)
+
+
+# a message for the dashboard that isn't about one order (a webhook registration
+# result, a merchant-pay link to send by hand, a product upload that failed)
+class Notice(models.Model):
+    class Level(models.TextChoices):
+        INFO = "info", "Info"
+        ERROR = "error", "Error"
+
+    message = models.TextField()
+    level = models.CharField(max_length=10, choices=Level.choices, default=Level.INFO)
+    created_at = models.DateTimeField(default=timezone.now)
+    dismissed = models.BooleanField(default=False)
+
+    def __str__(self):
+        return self.message[:60]

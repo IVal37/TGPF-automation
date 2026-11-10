@@ -21,9 +21,25 @@ class OrdersConfig(AppConfig):
             return
         if '--noreload' not in sys.argv and os.environ.get('RUN_MAIN') != 'true':
             return
-        from orders.management.commands.start_ngrok import start_ngrok
-        start_ngrok()
+        self._start_tunnel_and_register_webhooks()
         self._reset_stale_driver_locations()
+
+    # opens the tunnel and registers its URLs in WebJoint. A failure no longer
+    # takes the server down: it is logged and shown as a dashboard notice, because
+    # without registered webhooks no new order will arrive.
+    def _start_tunnel_and_register_webhooks(self):
+        import logging
+        from orders.services.notices import add_notice
+        logger = logging.getLogger(__name__)
+        try:
+            from orders.management.commands.start_ngrok import start_ngrok
+            url = start_ngrok()
+        except Exception as e:
+            logger.error("Webhook registration failed: %s", e)
+            add_notice(f"Webhook registration FAILED - WebJoint will not send new orders: {e}", "error")
+        else:
+            logger.info("Webhooks registered in WebJoint at %s", url)
+            add_notice(f"Webhooks registered in WebJoint at {url}")
 
     # nothing is held in memory any more: the only startup job is moving drivers
     # whose last known city is from an earlier day back to Davis

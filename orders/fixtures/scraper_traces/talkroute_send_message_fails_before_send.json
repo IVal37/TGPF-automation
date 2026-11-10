@@ -1,0 +1,158 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {
+    "prefs": {
+     "profile.default_content_setting_values.media_stream_mic": 2
+    }
+   }
+  }
+ ],
+ [
+  "get",
+  "https://my.talkroute.com/home/text_messages/"
+ ],
+ [
+  "find_element",
+  "id",
+  "login-page-email-input"
+ ],
+ [
+  "clear",
+  "id=login-page-email-input"
+ ],
+ [
+  "send_keys",
+  "id=login-page-email-input",
+  [
+   "fake-talkroute-email"
+  ]
+ ],
+ [
+  "find_element",
+  "id",
+  "login-page-password-input"
+ ],
+ [
+  "clear",
+  "id=login-page-password-input"
+ ],
+ [
+  "send_keys",
+  "id=login-page-password-input",
+  [
+   "fake-talkroute-password"
+  ]
+ ],
+ [
+  "find_element",
+  "id",
+  "login-page-login-button"
+ ],
+ [
+  "click",
+  "id=login-page-login-button"
+ ],
+ [
+  "find_element",
+  "class name",
+  "ui.basic.icon.button.initialModalButton.modal-accept-button"
+ ],
+ [
+  "click",
+  "class name=ui.basic.icon.button.initialModalButton.modal-accept-button"
+ ],
+ [
+  "find_element",
+  "class name",
+  "ui.basic.icon.button.initialModalButton.modal-accept-button"
+ ],
+ [
+  "click",
+  "class name=ui.basic.icon.button.initialModalButton.modal-accept-button"
+ ],
+ [
+  "find_element",
+  "css selector",
+  "label[for='modal-terms-checkbox']"
+ ],
+ [
+  "click",
+  "css selector=label[for='modal-terms-checkbox']"
+ ],
+ [
+  "find_element",
+  "class name",
+  "button.modal-accept-button:not(.initialModalButton)"
+ ],
+ [
+  "click",
+  "class name=button.modal-accept-button:not(.initialModalButton)"
+ ],
+ [
+  "find_element",
+  "xpath",
+  ".//button[normalize-space()='OK']"
+ ],
+ [
+  "click",
+  "xpath=.//button[normalize-space()='OK']"
+ ],
+ [
+  "find_element",
+  "id",
+  "navigation-messages-item"
+ ],
+ [
+  "click",
+  "id=navigation-messages-item"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"root\"]/div/div/div[2]/div/div[1]/div/div[1]/div/div[1]/button"
+ ],
+ [
+  "click",
+  "xpath=//*[@id=\"root\"]/div/div/div[2]/div/div[1]/div/div[1]/div/div[1]/button"
+ ],
+ [
+  "find_element",
+  "id",
+  "conversations-to-phone-number-input"
+ ],
+ [
+  "find_element",
+  "id",
+  "conversations-to-phone-number-input"
+ ],
+ [
+  "save_screenshot",
+  "send_message-9001-20260720-140000.png"
+ ],
+ [
+  "page_source"
+ ],
+ [
+  "log",
+  "ERROR",
+  "send_message (order 9001): failed at step 'compose message': TimeoutException: Message:"
+ ],
+ [
+  "quit"
+ ],
+ [
+  "raised",
+  "BeforeCommitError",
+  "compose message",
+  "TimeoutException: Message:"
+ ],
+ [
+  "return",
+  null
+ ]
+]

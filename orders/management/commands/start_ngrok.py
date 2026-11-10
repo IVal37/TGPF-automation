@@ -27,6 +27,7 @@ def start_ngrok():
 
     url = get_endpoint_link()
     set_webhooks(url)
+    return url
 
 
 def get_endpoint_link() -> str:

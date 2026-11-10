@@ -75,12 +75,25 @@
   "[data-test=\"page-title\"]"
  ],
  [
+  "save_screenshot",
+  "dispatch_to_driver-1111-2222-3333333-4444444-20260720-140000.png"
+ ],
+ [
+  "page_source"
+ ],
+ [
   "log",
   "ERROR",
-  "dispatch_to_driver (order 1111-2222-3333333-4444444): dispatched nothing: expected order '1111-2222-3333333-4444444' but the page shows '1111-2222-5555555-6666666'"
+  "dispatch_to_driver (order 1111-2222-3333333-4444444): failed at step 'open order': expected order '1111-2222-3333333-4444444' but the page shows '1111-2222-5555555-6666666'"
  ],
  [
   "quit"
+ ],
+ [
+  "raised",
+  "WrongOrderError",
+  "open order",
+  "expected order '1111-2222-3333333-4444444' but the page shows '1111-2222-5555555-6666666'"
  ],
  [
   "return",

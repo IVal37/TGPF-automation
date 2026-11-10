@@ -75,17 +75,35 @@
  [
   "log",
   "WARNING",
-  "get_wm_payment_type (Weedmaps order 49018286): order not found or page is another order; defaulting to Cash (TimeoutException)"
+  "get_wm_payment_type (Weedmaps order 49018286): order not found or page is another order (TimeoutException)"
  ],
  [
   "sleep",
   5
  ],
  [
+  "save_screenshot",
+  "get_wm_payment_type-wm49018286-20260720-140000.png"
+ ],
+ [
+  "page_source"
+ ],
+ [
+  "log",
+  "ERROR",
+  "get_wm_payment_type (order wm49018286): failed at step 'open Weedmaps order': TimeoutException: Message:"
+ ],
+ [
   "quit"
  ],
  [
+  "raised",
+  "BeforeCommitError",
+  "open Weedmaps order",
+  "TimeoutException: Message:"
+ ],
+ [
   "return",
-  "Cash"
+  null
  ]
 ]

@@ -18,8 +18,9 @@ from selenium.common.exceptions import TimeoutException
 
 # imports from project
 from orders.services.scrapers.browser import (
-    BLOCK, ci_contains, click, click_with_js_fallback, create_driver, fill, scroll_into_view,
+    BLOCK, browser_session, ci_contains, click, click_at_commit, click_with_js_fallback, fill, scroll_into_view,
 )
+from orders.services.scrapers.errors import BeforeCommitError, at_commit, before_commit, fail
 from orders.webhooks import redact_webhook_key, webhook_urls
 
 _WEBJOINT_URL = "https://order.thegoodpeoplefarms.com/admin/index.html#/"
@@ -31,11 +32,13 @@ _SAVE_CHANGES_XPATH = '//button[contains(.,"Save Changes")]'
 _CANCEL_XPATH = '//*[text()="Cancel"]'
 
 
-# raised when the page that opened is not the order we meant to act on; the
-# caller logs it and aborts, so nothing is ever written to the wrong order
-class WrongOrderError(Exception):
+# raised when the page that opened is not the order we meant to act on. Nothing
+# has been written yet, so it is a BeforeCommitError: the task may retry (the
+# usual cause is a slow page whose heading never showed) and nothing is ever
+# written to the wrong order
+class WrongOrderError(BeforeCommitError):
     def __init__(self, expected, seen):
-        super().__init__(f"expected order {expected!r} but the page shows {seen!r}")
+        super().__init__("open order", detail=f"expected order {expected!r} but the page shows {seen!r}")
         self.expected = expected
         self.seen = seen
 
@@ -48,28 +51,23 @@ def _login(driver, wait):
 
 
 # wraps a scraper body in a logged-in WebJoint browser session: launches
-# Chrome, logs in (logging "<fn name>: login failed" and bailing if that
-# fails), calls fn(driver, wait, *args), and always quits the browser.
-# Callers just call e.g. fill_order_notes(order_id, notes) — driver/wait are
-# injected. If fn takes an order_id, the "login failed" line names that order.
+# Chrome, logs in (a failed login raises BeforeCommitError("login"): nothing
+# has happened yet), calls fn(driver, wait, *args), and always quits the
+# browser. Callers just call e.g. fill_order_notes(order_id, notes) — driver/wait
+# are injected. If fn takes an order_id, failures name that order, and the
+# failure screenshot/page source are saved under it (see browser_session).
 def _webjoint_session(fn):
     takes_order = "order_id" in inspect.signature(fn).parameters
 
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        driver, wait = create_driver({"profile.default_content_setting_values.notifications": BLOCK})
-        try:
-            try:
+        order_ref = kwargs.get("order_id", args[0] if args else None) if takes_order else None
+        with browser_session(
+            fn.__name__, order_ref, {"profile.default_content_setting_values.notifications": BLOCK},
+        ) as (driver, wait):
+            with before_commit("login"):
                 _login(driver, wait)
-            except Exception as e:
-                label = fn.__name__
-                if takes_order:
-                    label += f" (order {kwargs.get('order_id', args[0] if args else None)})"
-                logger.error("%s: login failed: %s", label, e)
-                return
             return fn(driver, wait, *args, **kwargs)
-        finally:
-            driver.quit()
     return wrapper
 
 
@@ -108,9 +106,13 @@ def _open_inventory_page(wait, page: str):
     click(wait, (By.XPATH, f'//*[text()="{page}"]'))
 
 
-def _click_save_changes(wait):
+# `committed`, if given, gets an item appended just before the click: the click
+# is the point of no return for whatever the caller is saving
+def _click_save_changes(wait, committed=None):
     save_btn = wait.until(EC.element_to_be_clickable((By.XPATH, _SAVE_CHANGES_XPATH)))
     time.sleep(1)
+    if committed is not None:
+        committed.append(True)
     save_btn.click()
 
 
@@ -122,11 +124,16 @@ def _try_cancel(driver):
         pass
 
 
+# The commit point is the click on the notes form's save button. Anything before
+# it raises BeforeCommitError (nothing was written, a retry is safe); the save
+# click and what follows propagate as-is and are never retried automatically.
 @_webjoint_session
 def fill_order_notes(driver, wait, order_id: str, order_notes: str):
-    try:
+    save_locator = (By.XPATH, '/html/body/div[4]/div[2]/div[2]/form/div[2]/button')
+    with before_commit("open order"):
         _open_order(driver, wait, order_id)
 
+    with before_commit("edit notes"):
         # button is a child of the <p> containing "Order Notes" text
         click(wait, (By.XPATH, f'//p[{ci_contains("order notes", "text()")}]/button'))
 
@@ -135,29 +142,29 @@ def fill_order_notes(driver, wait, order_id: str, order_notes: str):
         order_notes_input.clear()
         order_notes_input.send_keys(order_notes + ('\n' + existing if existing else ''))
 
-        click(wait, (By.XPATH, '/html/body/div[4]/div[2]/div[2]/form/div[2]/button'))
+        save_button = wait.until(EC.element_to_be_clickable(save_locator))
+
+    with at_commit("save notes"):
+        click_at_commit(wait, save_locator, save_button)
 
         time.sleep(2)
 
-    except WrongOrderError as e:
-        logger.error("fill_order_notes (order %s): wrote nothing: %s", order_id, e)
-    except Exception as e:
-        logger.error("fill_order_notes (order %s): navigation/notes step failed: %s", order_id, e)
 
-
+# The commit point is the first save in the run: a row's Save Changes click, or a
+# kit's remove click. Until then a failure raises BeforeCommitError (nothing
+# changed, a retry is safe). Row and kit steps that fail are still skipped one by
+# one as before; at the end, if any failed, it raises: BeforeCommitError when no
+# save had happened yet, otherwise the plain error (never retried automatically,
+# since a retry could repeat a save that went through).
 @_webjoint_session
 def pull_from_chiles(driver, wait, order_id: str):
-    try:
+    with before_commit("open order"):
         _open_order(driver, wait, order_id)
-    except WrongOrderError as e:
-        logger.error("pull_from_chiles (order %s): changed nothing: %s", order_id, e)
-        return
-    except Exception as e:
-        logger.error("pull_from_chiles (order %s): navigation failed: %s", order_id, e)
-        return
 
     time.sleep(1)
 
+    committed = []  # an item is added just before each save/remove click
+    failures = []   # (step, exception) for each row / kit removal that failed
     try:
         kit_removals = []
         # iterate by index so pass-cases don't re-visit the same row (would cause infinite loop)
@@ -226,7 +233,7 @@ def pull_from_chiles(driver, wait, order_id: str):
                         time.sleep(0.3)
                         remove_btns[shift_idx].click()
                         time.sleep(1.5)
-                        _click_save_changes(wait)
+                        _click_save_changes(wait, committed)
                         time.sleep(1)
                     else:
                         _try_cancel(driver)
@@ -250,7 +257,7 @@ def pull_from_chiles(driver, wait, order_id: str):
                 if chiles_opts:
                     chiles_opts[0].click()
                     time.sleep(1.5)
-                    _click_save_changes(wait)
+                    _click_save_changes(wait, committed)
                 else:
                     item_name = row.text.split("\n")[0].strip()
                     if starting_opts:
@@ -263,6 +270,7 @@ def pull_from_chiles(driver, wait, order_id: str):
 
             except Exception as e:
                 logger.error("pull_from_chiles (order %s): row %d failed: %s", order_id, idx, e)
+                failures.append((f"row {idx}", e))
                 _try_cancel(driver)
 
         if kit_removals:
@@ -278,22 +286,37 @@ def pull_from_chiles(driver, wait, order_id: str):
                             remove_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button')))
                         except Exception:
                             continue
+                        committed.append(True)
                         remove_btn.click()
                         time.sleep(1)
                     except Exception as e:
                         logger.error("pull_from_chiles (order %s): kit removal failed for %s from %s: %s", order_id, product_name, kit_name, e)
+                        failures.append((f"kit removal of {product_name}", e))
             except Exception as e:
                 logger.error("pull_from_chiles (order %s): kit removal navigation failed: %s", order_id, e)
+                failures.append(("open Kits", e))
 
     except Exception as e:
         logger.error("pull_from_chiles (order %s): row loop failed: %s", order_id, e)
+        failures.append(("read order rows", e))
+
+    if failures:
+        step, exc = failures[0]
+        if len(failures) > 1:
+            step += f" (+{len(failures) - 1} more)"
+        fail(step, exc, bool(committed))
 
 
+# The commit point is the click on the assign-driver dialog's confirm button.
+# Everything before it raises BeforeCommitError (no driver assigned, a retry is
+# safe); the confirm click and what follows propagate as-is, never auto-retried.
 @_webjoint_session
 def dispatch_to_driver(driver, wait, order_id: str):
-    try:
+    confirm_locator = (By.XPATH, '/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]')
+    with before_commit("open order"):
         _open_order(driver, wait, order_id)
 
+    with before_commit("assign driver"):
         driver_button = wait.until(EC.presence_of_element_located((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/div/div[2]/div/div/div[2]/div/div/div[2]/table/tbody/tr/td[1]/div/label/span[1]/span[1]/input')))
         scroll_into_view(driver, driver_button)
         driver_button.click()
@@ -305,15 +328,12 @@ def dispatch_to_driver(driver, wait, order_id: str):
         click(wait, (By.ID, 'assignDriver'))
         time.sleep(2)
 
-        confirm_button = wait.until(EC.element_to_be_clickable((By.XPATH, '/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]')))
+        confirm_button = wait.until(EC.element_to_be_clickable(confirm_locator))
         time.sleep(1.5)
-        confirm_button.click()
-        time.sleep(1)
 
-    except WrongOrderError as e:
-        logger.error("dispatch_to_driver (order %s): dispatched nothing: %s", order_id, e)
-    except Exception as e:
-        logger.error("dispatch_to_driver (order %s): dispatch failed: %s", order_id, e)
+    with at_commit("confirm dispatch"):
+        click_at_commit(wait, confirm_locator, confirm_button)
+        time.sleep(1)
 
 
 # the dropdown option whose full rendered text exactly matches `text`, or None.
@@ -430,14 +450,19 @@ def _find_existing_product(driver, wait, name: str) -> Optional[str]:
     return best_match if best_ratio >= _PRODUCT_NAME_MATCH_THRESHOLD else None
 
 
+# The commit point is each product's submit click. A product that fails before
+# its submit is skipped as before (the others continue). At the end, if any
+# failed: BeforeCommitError when no product had been submitted yet (a retry
+# cannot duplicate anything), otherwise the plain error (never retried
+# automatically, since a retry would create the earlier products again).
 @_webjoint_session
 def create_product(driver, wait, product_dicts: List[Dict[str, str]]):
-    try:
+    with before_commit("open Products"):
         _open_inventory_page(wait, "Products")
         time.sleep(1)
-    except Exception as e:
-        logger.error("create_product: navigation failed: %s", e)
-        return
+
+    committed = []  # an item is added just before each product's submit click
+    failures = []   # (product name, exception) for each product that failed
 
     for product_dict in product_dicts:
         try:
@@ -592,13 +617,22 @@ def create_product(driver, wait, product_dicts: List[Dict[str, str]]):
                 raise
             scroll_into_view(driver, save_product_button)
             time.sleep(1)
+            committed.append(True)
             click_with_js_fallback(driver, save_product_button)
 
             time.sleep(2)
 
         except Exception as e:
             logger.exception("create_product: product creation failed: %s", e)
+            failures.append((product_dict.get("product_name", "?"), e))
             continue
+
+    if failures:
+        name, exc = failures[0]
+        step = f"create product {name!r}"
+        if len(failures) > 1:
+            step += f" (+{len(failures) - 1} more)"
+        fail(step, exc, bool(committed))
 
 
 @_webjoint_session
@@ -609,37 +643,43 @@ def set_webhooks(driver, wait, base_url: str) -> None:
     complete_order_url = urls["complete_order"]
     cancel_order_url = urls["cancel_order"]
 
-    try:
+    # the commit point is the Save Changes click; navigation and filling the
+    # three URL fields before it raise BeforeCommitError
+    with before_commit("open order settings"):
         click(wait, (By.XPATH, '//*[@id="nav_drawer"]/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[9]'))
         click(wait, (By.XPATH, '//*[@id="nav_drawer"]/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[9]/div[2]/div/div/menu/a[1]'))
         click(wait, (By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div/div[6]/div[1]'))
-    except Exception as e:
-        logger.error("set_webhooks: navigation to order settings failed: %s", e)
-        return
 
+    failure = None
     try:
-        fill(wait, (By.ID, "hooks.orderSubmit"), new_order_url)
-        fill(wait, (By.ID, "hooks.orderComplete"), complete_order_url)
-        fill(wait, (By.ID, "hooks.orderCancel"), cancel_order_url)
+        with before_commit("fill webhook URLs"):
+            fill(wait, (By.ID, "hooks.orderSubmit"), new_order_url)
+            fill(wait, (By.ID, "hooks.orderComplete"), complete_order_url)
+            fill(wait, (By.ID, "hooks.orderCancel"), cancel_order_url)
 
-        time.sleep(1)
+            time.sleep(1)
 
-        # match by button text — the old positional XPath (form/div/div[16]/div[1]/button)
-        # broke whenever the settings form layout shifted by a div
-        save_changes_button = wait.until(EC.element_to_be_clickable((
-            By.XPATH, f'//button[{ci_contains("save changes")}]',
-        )))
-        scroll_into_view(driver, save_changes_button)
-        time.sleep(1)
-        click_with_js_fallback(driver, save_changes_button)
-        logger.info(
-            "set_webhooks: saved — new_order=%s complete_order=%s",
-            redact_webhook_key(new_order_url), redact_webhook_key(complete_order_url),
-        )
+            # match by button text — the old positional XPath (form/div/div[16]/div[1]/button)
+            # broke whenever the settings form layout shifted by a div
+            save_changes_button = wait.until(EC.element_to_be_clickable((
+                By.XPATH, f'//button[{ci_contains("save changes")}]',
+            )))
+            scroll_into_view(driver, save_changes_button)
+            time.sleep(1)
+
+        with at_commit("save webhooks"):
+            click_with_js_fallback(driver, save_changes_button)
+            logger.info(
+                "set_webhooks: saved — new_order=%s complete_order=%s",
+                redact_webhook_key(new_order_url), redact_webhook_key(complete_order_url),
+            )
     except Exception as e:
-        logger.error("set_webhooks: failed to set or save webhook URLs: %s", e)
+        failure = e
 
+    # the wait after this step is kept whether or not it worked, as before
     time.sleep(5)
+    if failure is not None:
+        raise failure
 
 
 @_webjoint_session

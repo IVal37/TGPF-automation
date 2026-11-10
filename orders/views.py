@@ -7,14 +7,14 @@ from decimal import Decimal
 # imports from django
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, Sum
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 # imports from project
 from django.conf import settings
-from orders.models import Driver, Order, OrderItem, OPEN_STATUSES, QUEUE_STATUSES, OrderStatus
+from orders.models import Driver, Notice, Order, OrderItem, OPEN_STATUSES, QUEUE_STATUSES, OrderStatus
 from orders.services.dispatch import (
     build_dispatch_msg_from_order, build_reschedule_msg_from_order,
     extract_msg_info, get_dispatch_msg, is_fsa_fsm, is_merchant_pay_customer,
@@ -22,7 +22,7 @@ from orders.services.dispatch import (
 )
 from orders.services.note import get_order_notes
 from orders.tasks import (
-    create_product_task, fill_order_notes_task, prepare_order_task,
+    RETRYABLE_TASKS, create_product_task, fill_order_notes_task, prepare_order_task,
     resolve_payment_type_task, send_merchant_pay_link_task, send_message_task,
 )
 from orders.services.invoice import extract_products_from_invoice
@@ -44,12 +44,24 @@ def _pending_queryset():
     # (no driver yet, so no ETA) waiting for a dispatcher to pick a driver
     queued = Q(status__in=QUEUE_STATUSES, eta_start__isnull=False)
     unassigned = Q(status__in=OPEN_STATUSES, driver__isnull=True, order_date__date=queries.today())
-    return Order.objects.filter(queued | unassigned, is_shell=False)
+    # plus anything being texted right now, and anything with a failure to show
+    # (even an order already sent: a note that failed to save still needs a look)
+    sending = Q(status=OrderStatus.SENDING, order_date__date=queries.today())
+    failed = ~Q(last_error="")
+    return Order.objects.filter(queued | unassigned | sending | failed, is_shell=False)
 
 # status is the source of truth; dispatch_sent is kept written for one release
 # (rollback safety) and never read
 def _mark_dispatch_sent(order_id: str) -> None:
     Order.objects.filter(order_id=order_id).update(status=OrderStatus.SENT, dispatch_sent=True)
+
+# Texts the customer through the browser queue. The order goes to "sending"
+# FIRST (no longer in the queue, so a second Send click is a 404 and can't text
+# twice); send_message_task moves it to "sent" once the text is out, or leaves it
+# on "sending" with the error shown on its card if it fails.
+def _queue_text(order_id: str, phone: str, text: str) -> None:
+    Order.objects.filter(order_id=order_id).update(status=OrderStatus.SENDING, dispatch_sent=True)
+    send_message_task.delay(order_id, phone, text)
 
 # queues a WebJoint Selenium task for exactly one order, identified by its
 # WebJoint id. Orders saved before webjoint_id existed (or from a payload
@@ -74,12 +86,16 @@ def _pending_orders():
         result.append({
             "order": order,
             "unassigned": unassigned,
+            # waiting for a dispatcher (approve + send); other cards are only here
+            # because they are sending right now or have an error to show
+            "in_queue": order.status in QUEUE_STATUSES,
+            "sending": order.status == OrderStatus.SENDING,
             # an unassigned order that was texted anyway (under-min, or its driver
             # was switched off after the dispatch text went out)
-            "already_texted": unassigned and order.status == OrderStatus.SENT,
+            "already_texted": unassigned and order.status in (OrderStatus.SENDING, OrderStatus.SENT),
             "eta_start_value": order.eta_start.strftime("%H:%M") if order.eta_start else "",
             "eta_end_value": order.eta_end.strftime("%H:%M") if order.eta_end else "",
-            "past_closing": bool(order.eta_start) and is_past_closing(order.eta_start),
+            "past_closing": order.status in QUEUE_STATUSES and bool(order.eta_start) and is_past_closing(order.eta_start),
             "is_fsa_fsm": order_is_fsa_fsm,
             # only set once this order (a real customer's) has an FSA/FSM
             # order linked to it as the second part of a legal-limit split
@@ -152,6 +168,7 @@ def order_list(request):
         **_restock_context(),
         'active_drivers': list(queries.active_drivers()),
         'drivers': _driver_panel(),
+        'notices': Notice.objects.filter(dismissed=False).order_by('-created_at')[:10],
         'cities': sorted(CITY_MINS.keys()),
         'pending_orders': pending_orders,
     })
@@ -176,6 +193,49 @@ def toggle_driver_view(request):
         remove_driver(driver.pk)
     else:
         add_driver(driver.pk)
+    return redirect("/")
+
+def _clear_error(order: Order) -> None:
+    Order.objects.filter(pk=order.pk).update(
+        last_error="", last_error_at=None, last_error_task="", last_error_args={}, last_error_after_commit=False,
+    )
+
+@login_required
+@require_http_methods(["POST"])
+def retry_task_view(request):
+    """Re-queues the browser task that failed for an order, with the same
+    arguments, and clears the error. The card asks for a confirm first when the
+    failure was after the irreversible click (it may already have gone through)."""
+    order = get_object_or_404(Order, order_id=request.POST.get("order_id"), last_error__gt="")
+    task = RETRYABLE_TASKS.get(order.last_error_task)
+    if task is None:
+        raise Http404("no retryable task recorded for this order")
+    payload = order.last_error_args or {}
+    _clear_error(order)
+    # like every other browser task, only queued outside test mode
+    if not settings.RESTOCK_TEST_MODE:
+        task.delay(*payload.get("args", []), **payload.get("kwargs", {}))
+    return redirect("/")
+
+@login_required
+@require_http_methods(["POST"])
+def dismiss_error_view(request):
+    """Clears an order's failure. For an order stuck on "sending" (with or without
+    an error: a worker that died mid-send leaves none) the dispatcher is saying
+    they handled the text themselves, so it becomes "sent"."""
+    order = get_object_or_404(
+        Order, Q(last_error__gt="") | Q(status=OrderStatus.SENDING), order_id=request.POST.get("order_id"),
+    )
+    _clear_error(order)
+    if order.status == OrderStatus.SENDING:
+        _mark_dispatch_sent(order.order_id)
+    return redirect("/")
+
+@login_required
+@require_http_methods(["POST"])
+def dismiss_notice_view(request):
+    get_object_or_404(Notice, pk=request.POST.get("notice_id"))
+    Notice.objects.filter(pk=request.POST.get("notice_id")).update(dismissed=True)
     return redirect("/")
 
 @login_required
@@ -333,10 +393,11 @@ def new_order(request):
     if not settings.RESTOCK_TEST_MODE:
         if under_min:
             # no ETA window in this message, nothing to double-check — auto-send
-            if not no_text:
-                send_message_task.delay(msg_dict["phone"], dispatch_msg)
+            if no_text:
+                _mark_dispatch_sent(msg_dict["id"])
+            else:
+                _queue_text(msg_dict["id"], msg_dict["phone"], dispatch_msg)
             _queue_webjoint(fill_order_notes_task, msg_dict["id"], webjoint_id, "reached out about under min")
-            _mark_dispatch_sent(msg_dict["id"])
         elif no_text and not unassigned:
             # excluded customer: we never text them, so there's nothing to hold
             # for approval — write notes with the system-computed window now.
@@ -351,7 +412,7 @@ def new_order(request):
         # and send (see send_dispatch_msg_view / send_reschedule_msg_view below).
 
         if is_merchant_pay_customer(msg_dict["name"], msg_dict["last_name"]) and not under_min:
-            send_merchant_pay_link_task.delay()
+            send_merchant_pay_link_task.delay(msg_dict["id"])
 
         # first in the browser queue, since a dispatcher is waiting on it
         if resolve_payment:
@@ -393,11 +454,11 @@ def send_dispatch_msg_view(request):
         eta_end = datetime.combine(base_date, datetime.strptime(eta_end_str, "%H:%M").time())
         order.set_etas(eta_start, eta_end)
 
-    if not settings.RESTOCK_TEST_MODE:
-        send_message_task.delay(order.customer_phone, build_dispatch_msg_from_order(order))
+    if settings.RESTOCK_TEST_MODE:
+        _mark_dispatch_sent(order_id)
+    else:
+        _queue_text(order_id, order.customer_phone, build_dispatch_msg_from_order(order))
         _queue_webjoint(fill_order_notes_task, order.order_id, order.webjoint_id, get_order_notes(order))
-
-    _mark_dispatch_sent(order_id)
     return redirect("/")
 
 @login_required
@@ -406,14 +467,14 @@ def send_reschedule_msg_view(request):
     order_id = request.POST.get("order_id")
     order = get_object_or_404(Order, order_id=order_id, status__in=QUEUE_STATUSES)
 
-    if not settings.RESTOCK_TEST_MODE:
-        send_message_task.delay(order.customer_phone, build_reschedule_msg_from_order(order))
+    if settings.RESTOCK_TEST_MODE:
+        _mark_dispatch_sent(order_id)
+    else:
+        _queue_text(order_id, order.customer_phone, build_reschedule_msg_from_order(order))
         _queue_webjoint(
             fill_order_notes_task, order.order_id, order.webjoint_id,
             "reached out about rescheduling for tomorrow morning",
         )
-
-    _mark_dispatch_sent(order_id)
     return redirect("/")
 
 @login_required

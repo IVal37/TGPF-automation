@@ -15,7 +15,9 @@ import difflib
 import json
 import logging
 import os
+import tempfile
 from contextlib import ExitStack
+from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -25,7 +27,8 @@ from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
-from orders.services.scrapers import merchant_pay, talkroute, webjoint, weedmaps
+from orders.services.scrapers import browser, merchant_pay, talkroute, webjoint, weedmaps
+from orders.services.scrapers.errors import BeforeCommitError
 from orders.services.scrapers.browser import ci_contains
 
 TRACE_DIR = Path(__file__).parent / "fixtures" / "scraper_traces"
@@ -78,6 +81,7 @@ class FakeElement:
         self._displayed = spec.get("displayed", True)
         self._enabled = spec.get("enabled", True)
         self._dom = spec.get("dom", {})
+        self._click_error = spec.get("click_error")
 
     def __repr__(self):
         return self.label
@@ -93,6 +97,8 @@ class FakeElement:
 
     def click(self):
         self._trace.append(["click", self.label])
+        if self._click_error:
+            raise RuntimeError(self._click_error)
 
     def clear(self):
         self._trace.append(["clear", self.label])
@@ -145,6 +151,16 @@ class FakeChrome:
     def quit(self):
         self.trace.append(["quit"])
 
+    # failure artifacts: only the file name is recorded (the folder differs per machine)
+    def save_screenshot(self, path):
+        self.trace.append(["save_screenshot", Path(path).name])
+        return True
+
+    @property
+    def page_source(self):
+        self.trace.append(["page_source"])
+        return "<html></html>"
+
     def find_element(self, by, value):
         self.trace.append(["find_element", by, value])
         return _lookup_one(self.trace, self.dom, by, value, f"{by}={value}")
@@ -183,8 +199,19 @@ def order_page(order_id=ORDER_ID):
     return {ORDER_TITLE: [spec(f"Order # {order_id}")]}
 
 
+FIXED_NOW = datetime(2026, 7, 20, 14, 0, 0)
+
+
 @override_settings(HEADLESS=False)
 class ScraperTraceTests(SimpleTestCase):
+    def setUp(self):
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        override = override_settings(FAILURE_DIR=folder.name)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.failure_dir = Path(folder.name)
+
     def run_scenario(self, name, fn, dom=None, scripts=None, extra_patches=()):
         trace = []
         chrome = type("ScenarioChrome", (FakeChrome,), {
@@ -198,11 +225,19 @@ class ScraperTraceTests(SimpleTestCase):
             for module in (webjoint, talkroute, weedmaps, merchant_pay):
                 stack.enter_context(patch.object(module, "time", FakeTime(trace)))
             stack.enter_context(patch.dict(os.environ, FAKE_ENV))
+            stack.enter_context(patch.object(browser, "_now", lambda: FIXED_NOW))
             for p in extra_patches:
                 stack.enter_context(p)
             orders_logger.addHandler(handler)
             try:
                 result = fn()
+            except Exception as exc:
+                # a scraper that fails raises; the trace records which kind and at which step
+                trace.append(["raised", type(exc).__name__, getattr(exc, "step", None), str(exc)])
+                result = None
+                self.raised = exc
+            else:
+                self.raised = None
             finally:
                 orders_logger.removeHandler(handler)
         trace.append(["return", result])
@@ -396,6 +431,137 @@ class ScraperTraceTests(SimpleTestCase):
             webjoint.get_customer_info,
             dom={(By.XPATH, count_xpath): [spec("Order count 7")]},
         )
+
+    # ── failures: before the commit point (retryable) vs at/after it ──────
+    #
+    # BeforeCommitError means nothing irreversible happened, so the task layer
+    # retries. Any other error comes from the commit click or later and must
+    # never be retried automatically.
+
+    def assert_raised(self, kind, step):
+        self.assertIsNotNone(self.raised, "the scraper was expected to raise")
+        self.assertEqual((type(self.raised).__name__, getattr(self.raised, "step", None)), (kind, step))
+        self.assertEqual(isinstance(self.raised, BeforeCommitError), kind in ("BeforeCommitError", "WrongOrderError"))
+
+    def test_talkroute_fails_before_send(self):
+        self.run_scenario(
+            "talkroute_send_message_fails_before_send",
+            lambda: talkroute.send_message("5555550100", "hello", order_ref="9001"),
+            dom={(By.ID, "conversations-to-phone-number-input"): MISSING},
+        )
+        self.assert_raised("BeforeCommitError", "compose message")
+
+    def test_talkroute_fails_at_the_send_click(self):
+        self.run_scenario(
+            "talkroute_send_message_fails_at_send",
+            lambda: talkroute.send_message("5555550100", "hello", order_ref="9001"),
+            dom={(By.CLASS_NAME, "message-input-send"): [spec(click_error="send click failed")]},
+        )
+        self.assert_raised("RuntimeError", "send message")
+
+    def test_fill_order_notes_fails_before_save(self):
+        notes_xpath = '/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]'
+        self.run_scenario(
+            "webjoint_fill_order_notes_fails_before_save",
+            lambda: webjoint.fill_order_notes(ORDER_ID, "test note"),
+            dom={**order_page(), (By.XPATH, notes_xpath): MISSING},
+        )
+        self.assert_raised("BeforeCommitError", "edit notes")
+
+    def test_fill_order_notes_fails_at_the_save_click(self):
+        save = '/html/body/div[4]/div[2]/div[2]/form/div[2]/button'
+        self.run_scenario(
+            "webjoint_fill_order_notes_fails_at_save",
+            lambda: webjoint.fill_order_notes(ORDER_ID, "test note"),
+            dom={**order_page(), (By.XPATH, save): [spec(click_error="save click failed")]},
+        )
+        self.assert_raised("RuntimeError", "save notes")
+
+    def test_dispatch_fails_before_confirm(self):
+        confirm = '/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]'
+        self.run_scenario(
+            "webjoint_dispatch_to_driver_fails_before_confirm",
+            lambda: webjoint.dispatch_to_driver(ORDER_ID),
+            dom={**order_page(), (By.XPATH, confirm): MISSING},
+        )
+        self.assert_raised("BeforeCommitError", "assign driver")
+
+    def test_dispatch_fails_at_the_confirm_click(self):
+        confirm = '/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]'
+        self.run_scenario(
+            "webjoint_dispatch_to_driver_fails_at_confirm",
+            lambda: webjoint.dispatch_to_driver(ORDER_ID),
+            dom={**order_page(), (By.XPATH, confirm): [spec(click_error="confirm click failed")]},
+        )
+        self.assert_raised("RuntimeError", "confirm dispatch")
+
+    def test_pull_from_chiles_row_fails_before_any_save(self):
+        dom = {
+            **order_page(),
+            (By.XPATH, '//tbody/tr'): [spec("Item A\nStarting Shift Mobile Inventory")],
+            (By.CSS_SELECTOR, 'div.css-1j4kz5m'): MISSING,
+        }
+        self.run_scenario(
+            "webjoint_pull_from_chiles_fails_before_save",
+            lambda: webjoint.pull_from_chiles(ORDER_ID), dom=dom,
+        )
+        self.assert_raised("BeforeCommitError", "row 0")
+
+    def test_pull_from_chiles_row_fails_after_an_earlier_save(self):
+        edit = './/button[.//*[local-name()="path"][contains(@d,"M3 17.25")]]'
+        dom = {
+            **order_page(),
+            (By.XPATH, '//tbody/tr'): [
+                spec("Item A\nStarting Shift Mobile Inventory"),
+                spec("Item B\nStarting Shift Mobile Inventory", dom={(By.XPATH, edit): MISSING}),
+            ],
+            (By.XPATH, '//*[@role="option" and contains(.,"@ Chiles Rd Shop")]'): [spec("@ Chiles Rd Shop")],
+        }
+        self.run_scenario(
+            "webjoint_pull_from_chiles_fails_after_save",
+            lambda: webjoint.pull_from_chiles(ORDER_ID), dom=dom,
+        )
+        # row 0 was saved, so the failure of row 1 must not be retried automatically
+        self.assert_raised("NoSuchElementException", "row 1")
+
+    def test_create_product_fails_before_any_submit(self):
+        submit = f'//button[@type="submit"][{ci_contains("create product")} or {ci_contains("save changes")}]'
+        dom = {**self._product_dom([]), (By.XPATH, submit): MISSING}
+        self.run_scenario(
+            "webjoint_create_product_fails_before_submit",
+            lambda: webjoint.create_product([self._product()]), dom=dom,
+        )
+        self.assert_raised("BeforeCommitError", "create product 'Beach Party | Refined Live Resin | All-In-One'")
+
+    def test_create_product_second_product_fails_after_the_first_was_submitted(self):
+        dom = self._product_dom(["Hybrid"])  # no "Sativa" option for the second product
+        first = self._product(lineage="", strain="", product_name="First")
+        second = self._product(lineage="Sativa", product_name="Second")
+        self.run_scenario(
+            "webjoint_create_product_fails_after_submit",
+            lambda: webjoint.create_product([first, second]), dom=dom,
+        )
+        self.assert_raised("ValueError", "create product 'Second'")
+
+    def test_set_webhooks_fails_at_the_save_click_and_still_waits(self):
+        # click_with_js_fallback swallows a failed native click and retries with JS, so the
+        # failure is injected into the helper itself
+        self.run_scenario(
+            "webjoint_set_webhooks_fails_at_save",
+            lambda: webjoint.set_webhooks("https://example.ngrok.app"),
+            extra_patches=[patch.object(webjoint, "click_with_js_fallback", side_effect=RuntimeError("save click failed"))],
+        )
+        self.assert_raised("RuntimeError", "save webhooks")
+
+    def test_failure_screenshot_and_page_source_are_written(self):
+        self.run_scenario(
+            "webjoint_fill_order_notes_wrong_order",
+            lambda: webjoint.fill_order_notes(ORDER_ID, "test note"),
+            dom=order_page(OTHER_ORDER_ID),
+        )
+        # the fake browser writes no screenshot, but the page source is written for real
+        names = sorted(path.name for path in self.failure_dir.iterdir())
+        self.assertEqual(names, [f"fill_order_notes-{ORDER_ID}-20260720-140000.html"])
 
     # ── other sites ───────────────────────────────────────────────────────
 

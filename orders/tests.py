@@ -469,7 +469,7 @@ class TestNewOrderView(SimpleTestCase):
         # under-minimum messages have no ETA window to review, so they keep
         # auto-sending exactly as before and never enter the dispatch queue
         _, mocks = self._run(is_under_min={"return_value": True})
-        mocks["send_message_task"].delay.assert_called_once_with("15307239356", "msg")
+        mocks["send_message_task"].delay.assert_called_once_with("6767008", "15307239356", "msg")
         mocks["fill_order_notes_task"].delay.assert_called_once_with(WJ_ID, "reached out about under min")
         mocks["prepare_order_task"].delay.assert_called_once_with(WJ_ID, False)
 
@@ -492,7 +492,7 @@ class TestNewOrderView(SimpleTestCase):
         with self.assertLogs("orders.views", "WARNING") as logs:
             _, mocks = self._run(payload=payload, is_under_min={"return_value": True})
         self.assertEqual(mocks["add_order"].call_args.kwargs["webjoint_id"], "")
-        mocks["send_message_task"].delay.assert_called_once_with("15307239356", "msg")
+        mocks["send_message_task"].delay.assert_called_once_with("6767008", "15307239356", "msg")
         mocks["fill_order_notes_task"].delay.assert_not_called()
         mocks["prepare_order_task"].delay.assert_not_called()
         self.assertTrue(any("6767008" in line for line in logs.output))
@@ -568,8 +568,8 @@ class TestSendDispatchMsgView(TestCase):
 
         self.assertEqual(response.status_code, 302)
         mock_send_task.delay.assert_called_once()
-        self.assertEqual(mock_send_task.delay.call_args.args[0], "15305551234")
-        self.assertIn("2:45-3:45", mock_send_task.delay.call_args.args[1])
+        self.assertEqual(mock_send_task.delay.call_args.args[:2], ("9001", "15305551234"))
+        self.assertIn("2:45-3:45", mock_send_task.delay.call_args.args[2])
         mock_notes_task.delay.assert_called_once()
         # the note targets this order's WebJoint id, not the newer order's
         self.assertEqual(mock_notes_task.delay.call_args.args[0], "1111-2222-3333333-9001")
@@ -652,8 +652,8 @@ class TestSendRescheduleMsgView(TestCase):
             response = send_reschedule_msg_view(_as_dispatcher(request))
 
         self.assertEqual(response.status_code, 302)
-        mock_send_task.delay.assert_called_once_with("15305559999", ANY)
-        self.assertIn("reschedule", mock_send_task.delay.call_args.args[1].lower())
+        mock_send_task.delay.assert_called_once_with(str(self.order.order_id), "15305559999", ANY)
+        self.assertIn("reschedule", mock_send_task.delay.call_args.args[2].lower())
         mock_notes_task.delay.assert_called_once_with(
             "1111-2222-3333333-9002", "reached out about rescheduling for tomorrow morning",
         )
@@ -1266,10 +1266,20 @@ class TestPrepareOrderTask(SimpleTestCase):
         self.assertEqual(self._run(False), [("pull", WJ_ID)])
 
     def test_still_dispatches_when_the_pull_raises(self):
-        with self.assertLogs("orders.tasks", "ERROR") as logs:
-            calls = self._run(True, pull_error=RuntimeError("chrome died"))
-        self.assertEqual(calls, [("pull", WJ_ID), ("dispatch", WJ_ID)])
+        # a pull that failed after its commit is raised (so it shows on the card and is
+        # never retried), but only once the dispatch has run
+        with self.assertLogs("orders.tasks", "ERROR") as logs, self.assertRaises(RuntimeError):
+            self._run(True, pull_error=RuntimeError("chrome died"))
         self.assertTrue(any(WJ_ID in line for line in logs.output))
+
+    def test_dispatch_runs_even_when_the_pull_fails(self):
+        from orders.tasks import prepare_order_task
+        calls = []
+        with patch("orders.tasks.pull_from_chiles", side_effect=RuntimeError("chrome died")), \
+             patch("orders.tasks.dispatch_to_driver", side_effect=lambda oid: calls.append(oid)), \
+             self.assertLogs("orders.tasks", "ERROR"), self.assertRaises(RuntimeError):
+            prepare_order_task(WJ_ID, True)
+        self.assertEqual(calls, [WJ_ID])
 
 
 class TestResolvePaymentTypeTask(TestCase):
@@ -1322,11 +1332,12 @@ class TestBrowserQueueSettings(SimpleTestCase):
     def test_every_scraper_backed_task_is_on_the_browser_queue(self):
         for name in ("send_message_task", "fill_order_notes_task", "pull_from_chiles_task",
                      "dispatch_to_driver_task", "prepare_order_task", "resolve_payment_type_task",
-                     "create_product_task", "send_merchant_pay_link_task"):
+                     "create_product_task"):
             self.assertEqual(self._queue(name), "browser", name)
 
-    def test_restock_digests_stay_on_the_default_queue(self):
-        for name in ("send_third_st_restock", "send_delivery_restock"):
+    def test_restock_digests_and_the_merchant_pay_reminder_stay_on_the_default_queue(self):
+        # the merchant pay reminder opens no browser (it only posts a dashboard notice)
+        for name in ("send_third_st_restock", "send_delivery_restock", "send_merchant_pay_link_task"):
             self.assertEqual(self._queue(name), "celery", name)
 
     def test_no_task_is_left_unrouted_by_accident(self):
@@ -1334,7 +1345,9 @@ class TestBrowserQueueSettings(SimpleTestCase):
         from celery.app.task import Task
         from orders import tasks
         names = {n for n, obj in vars(tasks).items() if isinstance(obj, Task)}
-        self.assertEqual(names, set(settings.BROWSER_TASKS) | {"send_third_st_restock", "send_delivery_restock"})
+        self.assertEqual(names, set(settings.BROWSER_TASKS) | {
+            "send_third_st_restock", "send_delivery_restock", "send_merchant_pay_link_task",
+        })
 
     def test_prefetch_is_one_and_acks_are_not_late(self):
         from TGPFflows.celery import app
@@ -2067,7 +2080,8 @@ class TestNewOrderWithNoDriver(DbTruthCase):
         mocks["send_message_task"].delay.assert_called_once()
         mocks["fill_order_notes_task"].delay.assert_called_once_with(WJ_ID, "reached out about under min")
         order = Order.objects.get(order_id="7001")
-        self.assertEqual((order.status, order.driver_id), (Order.Status.SENT, None))
+        # the text is queued; send_message_task moves it on to sent once it is out
+        self.assertEqual((order.status, order.driver_id), (Order.Status.SENDING, None))
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_no_text_customer_is_left_for_assignment(self):

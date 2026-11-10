@@ -75,12 +75,25 @@
   "[data-test=\"page-title\"]"
  ],
  [
+  "save_screenshot",
+  "pull_from_chiles-1111-2222-3333333-4444444-20260720-140000.png"
+ ],
+ [
+  "page_source"
+ ],
+ [
   "log",
   "ERROR",
-  "pull_from_chiles (order 1111-2222-3333333-4444444): changed nothing: expected order '1111-2222-3333333-4444444' but the page shows '1111-2222-5555555-6666666'"
+  "pull_from_chiles (order 1111-2222-3333333-4444444): failed at step 'open order': expected order '1111-2222-3333333-4444444' but the page shows '1111-2222-5555555-6666666'"
  ],
  [
   "quit"
+ ],
+ [
+  "raised",
+  "WrongOrderError",
+  "open order",
+  "expected order '1111-2222-3333333-4444444' but the page shows '1111-2222-5555555-6666666'"
  ],
  [
   "return",

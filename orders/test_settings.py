@@ -12,3 +12,7 @@ WEBHOOK_SECRET = "test-webhook-secret"
 
 # in-memory SQLite so the suite runs without MySQL
 DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
+
+# failure screenshots from tests go to a temp folder, never into logs/
+import tempfile  # noqa: E402
+FAILURE_DIR = os.path.join(tempfile.gettempdir(), "tgpf-test-failures")

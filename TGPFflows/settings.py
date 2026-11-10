@@ -229,7 +229,6 @@ BROWSER_TASKS = (
     'prepare_order_task',
     'resolve_payment_type_task',
     'create_product_task',
-    'send_merchant_pay_link_task',
 )
 CELERY_TASK_ROUTES = {f'orders.tasks.{name}': {'queue': 'browser'} for name in BROWSER_TASKS}
 # one job per worker slot at a time, so a queued browser job is never held
@@ -254,3 +253,7 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=17, minute=0, day_of_week='sun'),
     },
 }
+
+# screenshots and page sources saved when a browser scraper fails; deleted after
+# 14 days. Under the gitignored logs/ directory because pages can show customer details.
+FAILURE_DIR = BASE_DIR / 'logs' / 'failures'

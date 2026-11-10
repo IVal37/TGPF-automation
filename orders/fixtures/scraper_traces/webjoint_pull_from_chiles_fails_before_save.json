@@ -1,0 +1,196 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {
+    "prefs": {
+     "profile.default_content_setting_values.notifications": 2
+    }
+   }
+  }
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/"
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c13",
+  [
+   "fake-webjoint-email"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c202.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c202.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c202.c13",
+  [
+   "fake-webjoint-password"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c230.c204.c206.c209.c15"
+ ],
+ [
+  "click",
+  "class name=c230.c204.c206.c209.c15"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/orders/1111-2222-3333333-4444444/show"
+ ],
+ [
+  "refresh"
+ ],
+ [
+  "find_elements",
+  "css selector",
+  "[data-test=\"page-title\"]"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//tbody/tr"
+ ],
+ [
+  "find_elements",
+  "xpath",
+  "//tbody/tr"
+ ],
+ [
+  "find_element",
+  "xpath=//tbody/tr#0",
+  "xpath",
+  ".//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//tbody/tr#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+  ]
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "click",
+  "xpath=//tbody/tr#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//div[@role=\"button\" and .//*[contains(text(),\"Pulling From\")]]"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//div[@role=\"button\" and .//*[contains(text(),\"Pulling From\")]]"
+  ]
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "click",
+  "xpath=//div[@role=\"button\" and .//*[contains(text(),\"Pulling From\")]]"
+ ],
+ [
+  "sleep",
+  0.5
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//div[@role=\"dialog\"]"
+ ],
+ [
+  "find_elements",
+  "xpath=//div[@role=\"dialog\"]",
+  "class name",
+  "c420"
+ ],
+ [
+  "find_element",
+  "css selector",
+  "div.css-1j4kz5m"
+ ],
+ [
+  "find_element",
+  "css selector",
+  "div.css-1j4kz5m"
+ ],
+ [
+  "log",
+  "ERROR",
+  "pull_from_chiles (order 1111-2222-3333333-4444444): row 0 failed: Message: \n"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[text()=\"Cancel\"]"
+ ],
+ [
+  "click",
+  "xpath=//*[text()=\"Cancel\"]"
+ ],
+ [
+  "save_screenshot",
+  "pull_from_chiles-1111-2222-3333333-4444444-20260720-140000.png"
+ ],
+ [
+  "page_source"
+ ],
+ [
+  "log",
+  "ERROR",
+  "pull_from_chiles (order 1111-2222-3333333-4444444): failed at step 'row 0': TimeoutException: Message:"
+ ],
+ [
+  "quit"
+ ],
+ [
+  "raised",
+  "BeforeCommitError",
+  "row 0",
+  "TimeoutException: Message:"
+ ],
+ [
+  "return",
+  null
+ ]
+]

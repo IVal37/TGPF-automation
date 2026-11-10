@@ -1,0 +1,158 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {
+    "prefs": {
+     "profile.default_content_setting_values.notifications": 2
+    }
+   }
+  }
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/"
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c13",
+  [
+   "fake-webjoint-email"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c202.c13"
+ ],
+ [
+  "clear",
+  "class name=c199.c202.c13"
+ ],
+ [
+  "send_keys",
+  "class name=c199.c202.c13",
+  [
+   "fake-webjoint-password"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "c230.c204.c206.c209.c15"
+ ],
+ [
+  "click",
+  "class name=c230.c204.c206.c209.c15"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id='nav_drawer']/div/div[2]/div/div[1]/div[2]/div/div/div/nav/div[2]/a"
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/orders/1111-2222-3333333-4444444/show"
+ ],
+ [
+  "refresh"
+ ],
+ [
+  "find_elements",
+  "css selector",
+  "[data-test=\"page-title\"]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"root\"]/div/div/main/div[2]/div/div/div/div[2]/div/div/div[2]/div/div/div[2]/table/tbody/tr/td[1]/div/label/span[1]/span[1]/input"
+ ],
+ [
+  "execute_script",
+  "arguments[0].scrollIntoView({block:'center'});",
+  [
+   "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div/div/div[2]/div/div/div[2]/div/div/div[2]/table/tbody/tr/td[1]/div/label/span[1]/span[1]/input"
+  ]
+ ],
+ [
+  "click",
+  "xpath=//*[@id=\"root\"]/div/div/main/div[2]/div/div/div/div[2]/div/div/div[2]/div/div/div[2]/table/tbody/tr/td[1]/div/label/span[1]/span[1]/input"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_element",
+  "id",
+  "selectActionButton"
+ ],
+ [
+  "click",
+  "id=selectActionButton"
+ ],
+ [
+  "sleep",
+  1
+ ],
+ [
+  "find_element",
+  "id",
+  "assignDriver"
+ ],
+ [
+  "click",
+  "id=assignDriver"
+ ],
+ [
+  "sleep",
+  2
+ ],
+ [
+  "find_element",
+  "xpath",
+  "/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]"
+ ],
+ [
+  "save_screenshot",
+  "dispatch_to_driver-1111-2222-3333333-4444444-20260720-140000.png"
+ ],
+ [
+  "page_source"
+ ],
+ [
+  "log",
+  "ERROR",
+  "dispatch_to_driver (order 1111-2222-3333333-4444444): failed at step 'assign driver': TimeoutException: Message:"
+ ],
+ [
+  "quit"
+ ],
+ [
+  "raised",
+  "BeforeCommitError",
+  "assign driver",
+  "TimeoutException: Message:"
+ ],
+ [
+  "return",
+  null
+ ]
+]
