@@ -23,24 +23,14 @@ class OrdersConfig(AppConfig):
             return
         from orders.management.commands.start_ngrok import start_ngrok
         start_ngrok()
-        self._load_active_drivers()
+        self._reset_stale_driver_locations()
 
-    def _load_active_drivers(self):
+    # nothing is held in memory any more: the only startup job is moving drivers
+    # whose last known city is from an earlier day back to Davis
+    def _reset_stale_driver_locations(self):
         try:
-            from orders.models import Driver, Order, OPEN_STATUSES
-            from orders.services.state import active_drivers, orders_by_id, driver_id_by_order_id
-            from orders.services.engine import track_active_driver
-            from django.utils import timezone
-            for driver in Driver.objects.filter(is_active=True):
-                track_active_driver(driver)
-            today = timezone.now().date()
-            for driver in active_drivers:
-                driver.current_city = "Davis"
-                driver.save()
-            today_orders = list(Order.objects.filter(status__in=OPEN_STATUSES, driver__isnull=False, order_date__date=today).select_related('driver'))
-            for order in today_orders:
-                orders_by_id[order.order_id] = order
-                driver_id_by_order_id[order.order_id] = order.driver_id
+            from orders.services.startup import reset_stale_driver_locations
+            reset_stale_driver_locations()
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error("Failed to load state from DB on startup: %s", e)
+            logging.getLogger(__name__).error("Failed to reset driver locations on startup: %s", e)

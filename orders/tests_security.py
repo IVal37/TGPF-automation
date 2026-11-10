@@ -15,7 +15,8 @@ WEBHOOK_NAMES = ("new_order", "complete_order", "cancel_order")
 
 # every dashboard view that changes something (all POST-only)
 DASHBOARD_POST_PATHS = (
-    "/clear_dispatch_queue", "/add_dummy_driver", "/delete_driver", "/complete_order_manual",
+    "/clear_dispatch_queue", "/add_driver", "/toggle_driver", "/assign_driver", "/delete_driver",
+    "/complete_order_manual",
     "/send_dispatch_msg", "/send_reschedule_msg", "/link_order", "/unlink_order",
     "/reconcile_restock", "/clear_restock", "/add_shell_order", "/add_products_from_invoice",
     "/set_driver_location",
@@ -160,7 +161,7 @@ class TestDashboardCsrf(TestCase):
         self.client.force_login(User.objects.create_user("dispatcher"))
 
     def test_post_without_csrf_token_is_forbidden(self):
-        for path in ("/clear_restock", "/clear_dispatch_queue", "/add_dummy_driver"):
+        for path in ("/clear_restock", "/clear_dispatch_queue", "/add_driver", "/toggle_driver", "/assign_driver"):
             with self.subTest(path=path):
                 self.assertEqual(self.client.post(path).status_code, 403)
 

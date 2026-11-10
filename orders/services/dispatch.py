@@ -6,9 +6,8 @@ from datetime import datetime
 # imports from project
 from orders.models import Order
 from orders.services.money import round_money
-from orders.services.eta import get_eta
+from orders.services.eta import apply_scheduled_window, get_eta
 from orders.services.time import format_time, parse_webhook_time
-from orders.services.state import orders_by_id
 from orders.services.hours import closing_dt
 from orders.constants import (
     CARD_FEE_MULTIPLIER, CITY_MINS, DIRECT_SOURCES, FSA_FSM_NAMES, MERCHANT_PAY_CUSTOMERS, VALEDICTIONS,
@@ -106,12 +105,11 @@ def normal_dispatch_msg(dict):
     payment_type = dict["pay_type"]
     early_eta, late_eta = get_eta(dict["id"])
 
-    if dict.get("delivery_timing") == "Scheduled" and dict.get("scheduled_end"):
+    if dict.get("delivery_timing") == "Scheduled" and dict.get("scheduled_end") and dict.get("scheduled_start"):
         sched_end_dt = parse_webhook_time(dict["scheduled_end"])
-        order = orders_by_id[dict["id"]]
-        if order.eta_end <= sched_end_dt:
-            sched_start_dt = parse_webhook_time(dict["scheduled_start"])
-            order.set_etas(sched_start_dt, sched_end_dt)
+        order = Order.objects.get(order_id=dict["id"])
+        sched_start_dt = parse_webhook_time(dict["scheduled_start"])
+        if apply_scheduled_window(order, sched_start_dt, sched_end_dt):
             early_eta = format_time(sched_start_dt)
             late_eta = format_time(sched_end_dt)
 

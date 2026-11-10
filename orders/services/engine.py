@@ -1,27 +1,35 @@
 # imports from std lib
 from datetime import datetime
 from decimal import Decimal
-from collections import Counter, defaultdict
+from collections import defaultdict
+import logging
 from typing import List, DefaultDict, Optional
 import uuid
 
+# imports from third party
+from django.utils import timezone
+
 # imports from project
-from orders.models import Order, OrderItem, Driver
-from orders.services.state import orders_by_id, driver_id_by_order_id, drivers_by_id, active_drivers, completed_orders
+from orders.models import Order, OrderItem, Driver, OrderStatus, QUEUE_STATUSES
+from orders.services import queries
 from orders.constants import get_travel_time
+
+logger = logging.getLogger(__name__)
 
 # pick the active driver best suited to take on a stop in order_city:
 # least-loaded first (fewest current orders), then closest to order_city,
 # then lowest id for determinism when still tied
-def _pick_driver(order_city: str) -> Driver:
-    if not active_drivers:
-        raise ValueError("No active drivers available")
-    order_counts = Counter(driver_id_by_order_id.values())
+# returns None when nobody is on shift
+def _pick_driver(order_city: str) -> Optional[Driver]:
+    drivers = list(queries.active_drivers())
+    if not drivers:
+        return None
+    order_counts = queries.open_order_counts()
 
     def sort_key(d: Driver):
         return (order_counts.get(d.get_id(), 0), get_travel_time(d.get_current_city(), order_city), d.get_id())
 
-    return min(active_drivers, key=sort_key)
+    return min(drivers, key=sort_key)
 
 # persist a webhook's "details" line items against an already-saved order
 def _save_items(order: Order, items: list) -> None:
@@ -34,16 +42,9 @@ def _save_items(order: Order, items: list) -> None:
             price=price,
         )
 
-# hand an already-saved order to a driver and start tracking it in memory
+# hand an already-saved order to a driver
 def _assign_order(order: Order, driver: Driver) -> None:
     driver.add_order(order)
-    orders_by_id[order.order_id] = order
-    driver_id_by_order_id[order.order_id] = driver.get_id()
-
-# stop tracking an order in memory; returns the driver it was assigned to
-def _untrack_order(order_id: str) -> int:
-    orders_by_id.pop(order_id)
-    return driver_id_by_order_id.pop(order_id)
 
 # mark an order finished in the DB (used for completes, cancels, and shells).
 # status is the source of truth; `completed` is kept written (True for both
@@ -51,29 +52,11 @@ def _untrack_order(order_id: str) -> int:
 def _close_order_in_db(order_id: str, status: str = Order.Status.COMPLETED) -> None:
     Order.objects.filter(order_id=order_id).update(status=status, completed=True, driver=None)
 
+# a driver who is no longer on shift keeps their last city untouched
 def _move_driver(driver_id: int, city: str) -> None:
-    if driver_id in drivers_by_id:
-        drivers_by_id[driver_id].set_current_city(city)
-
-# first tracked shell order in `city`, optionally only among one driver's orders
-def _find_shell(city: str, driver_id: Optional[int] = None) -> Optional[str]:
-    return next(
-        (oid for oid in list(orders_by_id)
-         if orders_by_id[oid].is_shell and orders_by_id[oid].get_city() == city
-         and (driver_id is None or driver_id_by_order_id.get(oid) == driver_id)),
-        None
-    )
-
-def _drop_from_active_pool(driver_id: int) -> None:
-    for idx, d in enumerate(active_drivers):
-        if d.get_id() == driver_id:
-            active_drivers.pop(idx)
-            break
-
-# put a Driver instance into the in-memory active pool (no DB write)
-def track_active_driver(driver: Driver) -> None:
-    active_drivers.append(driver)
-    drivers_by_id[driver.get_id()] = driver
+    driver = Driver.objects.filter(pk=driver_id, is_active=True).first()
+    if driver is not None:
+        driver.set_current_city(city)
 
 # add order and add to associated data structures
 def add_order(
@@ -91,14 +74,20 @@ def add_order(
     webjoint_id: str = "",
     weedmaps_order_id: str = "",
     status: str = Order.Status.AWAITING_APPROVAL,
-) -> None:
-    assigned_driver: Driver = _pick_driver(order_city)
+    scheduled_start: Optional[datetime] = None,
+    scheduled_end: Optional[datetime] = None,
+) -> Order:
+    # with nobody on shift the order is still saved (driver=None); a dispatcher
+    # assigns it later with assign_order, which is when its ETA is computed
+    assigned_driver: Optional[Driver] = _pick_driver(order_city)
 
     order = Order(
         order_id=order_id,
         webjoint_id=webjoint_id,
         weedmaps_order_id=weedmaps_order_id,
         status=status,
+        scheduled_start=scheduled_start,
+        scheduled_end=scheduled_end,
         customer_name=customer_name,
         customer_phone=customer_phone,
         city=order_city,
@@ -111,7 +100,26 @@ def add_order(
     )
     order.save()
     _save_items(order, items)
-    _assign_order(order, assigned_driver)
+    if assigned_driver is not None:
+        _assign_order(order, assigned_driver)
+    else:
+        logger.warning("add_order %s: no driver on shift; saved unassigned", order_id)
+    return order
+
+# hand an unassigned order to a driver. A queued order gets its ETA now (and the
+# customer's scheduled window, if they picked one); an order that was already
+# texted keeps the ETA the customer was told.
+def assign_order(order_id: str, driver_id: int) -> None:
+    from orders.services.eta import apply_scheduled_window, get_eta
+
+    order = Order.objects.get(order_id=order_id)
+    driver = Driver.objects.get(pk=driver_id, is_active=True)
+    _assign_order(order, driver)
+
+    if order.status in QUEUE_STATUSES:
+        get_eta(order_id)
+        if order.scheduled_start and order.scheduled_end:
+            apply_scheduled_window(Order.objects.get(order_id=order_id), order.scheduled_start, order.scheduled_end)
 
 # record a walk-in storefront sale (e.g. 3rd St pickup): no driver, no ETA, no
 # dispatch SMS — just persisted so the nightly restock digest can query it.
@@ -147,50 +155,45 @@ def add_storefront_order(
     order.save()
     _save_items(order, items)
 
-# complete order and remove from associated data structures
+# complete an order. If it was out with a driver today, that driver is now in the
+# order's city, and one of their placeholder shells there is done too.
 def complete_order(order_id: str, city: str = "") -> None:
-    if order_id in orders_by_id:
-        order = orders_by_id[order_id]
-        completed_orders.append({
-            "order_id": order_id,
-            "customer_name": order.customer_name,
-            "items": [
-                {"product_name": item.product_name, "quantity": item.quantity, "price": str(item.price)}
-                for item in order.items.all()
-            ],
-        })
+    tracked = queries.open_orders().filter(order_id=order_id).first()
+    existing = Order.objects.filter(order_id=order_id).first()
+    already_closed = existing is not None and existing.status in (
+        OrderStatus.COMPLETED, OrderStatus.CANCELLED, OrderStatus.STOREFRONT,
+    )
 
     _close_order_in_db(order_id)
 
-    if order_id in driver_id_by_order_id:
-        city = orders_by_id[order_id].get_city()
-        driver_id = _untrack_order(order_id)
-        _move_driver(driver_id, city)
+    if tracked is not None:
+        city = tracked.get_city()
+        _move_driver(tracked.driver_id, city)
 
-        # the driver has now been to this city, so one of their placeholder
-        # shells there is done too
-        shell_id = _find_shell(city, driver_id)
-        if shell_id:
-            _untrack_order(shell_id)
-            _close_order_in_db(shell_id)
+        shell = queries.find_open_shell(city, tracked.driver_id)
+        if shell is not None:
+            _close_order_in_db(shell.order_id)
 
-    elif city:
-        # order wasn't tracked (placed before server started) — pop matching shell
-        shell_id = _find_shell(city)
-        if shell_id:
-            driver_id = _untrack_order(shell_id)
-            _close_order_in_db(shell_id)
-            _move_driver(driver_id, city)
+    elif city and not already_closed:
+        # order wasn't tracked (placed before today, or not ours) - pop a
+        # matching shell. A repeat webhook for an order that is already closed
+        # must not move a driver or close another shell a second time.
+        shell = queries.find_open_shell(city)
+        if shell is not None:
+            _close_order_in_db(shell.order_id)
+            _move_driver(shell.driver_id, city)
 
 # add a shell order (city only) so driver location updates when it's completed
 def add_shell_order(city: str) -> None:
-    assigned_driver: Driver = _pick_driver(city)
+    assigned_driver = _pick_driver(city)
+    if assigned_driver is None:
+        raise ValueError("No active drivers available")
 
     order_id = f"shell_{uuid.uuid4().hex}"
     order = Order(
         order_id=order_id,
         city=city,
-        order_date=datetime.now(),
+        order_date=timezone.now(),
         is_shell=True,
         # a shell is with a driver and never queued
         status=Order.Status.SENT,
@@ -199,38 +202,41 @@ def add_shell_order(city: str) -> None:
     order.save()
     _assign_order(order, assigned_driver)
 
-# cancel order and remove from associated data structures (no restock capture)
+# cancel an order (no restock capture); its driver ends up in the order's city
 def cancel_order(order_id: str) -> None:
-    _close_order_in_db(order_id, Order.Status.CANCELLED)
+    tracked = queries.open_orders().filter(order_id=order_id).first()
 
-    if order_id in driver_id_by_order_id:
-        city = orders_by_id[order_id].get_city()
-        _move_driver(_untrack_order(order_id), city)
+    _close_order_in_db(order_id, OrderStatus.CANCELLED)
 
-# load a driver from the DB into the active pool
+    if tracked is not None:
+        _move_driver(tracked.driver_id, tracked.get_city())
+
+# put a driver on shift
 def add_driver(driver_id: int) -> None:
     driver: Driver = Driver.objects.get(pk=driver_id)
     driver.is_active = True
-    driver.save()
-    track_active_driver(driver)
+    driver.save(update_fields=["is_active"])
 
-# remove driver from the active pool and reassign orders
+# take a driver off shift. Their open orders (already-texted ones too) become
+# unassigned so a dispatcher can hand them to someone else; their placeholder
+# shells only mark where they were heading, so they are closed.
 def remove_driver(driver_id: int) -> None:
-    driver = drivers_by_id.pop(driver_id)
-    driver.is_active = False
-    driver.save()
-    _drop_from_active_pool(driver_id)
+    open_orders = queries.open_orders(driver_id)
+    shell_ids = list(open_orders.filter(is_shell=True).values_list("order_id", flat=True))
+    order_pks = list(open_orders.filter(is_shell=False).values_list("pk", flat=True))
+    for shell_id in shell_ids:
+        _close_order_in_db(shell_id)
+    Order.objects.filter(pk__in=order_pks).update(driver=None)
+    Driver.objects.filter(pk=driver_id).update(is_active=False)
 
-# permanently delete a driver from memory and the DB
+# permanently delete a driver (their open orders are unassigned first, not lost)
 def delete_driver(driver_id: int) -> None:
-    drivers_by_id.pop(driver_id, None)
-    _drop_from_active_pool(driver_id)
+    remove_driver(driver_id)
     Driver.objects.filter(pk=driver_id).delete()
 
-# return a dictionary of driver id -> list of driver orders
+# return a dictionary of city -> the driver's open order ids there (in route order)
 def get_driver_city_queues(driver_id: int) -> DefaultDict[str, List[str]]:
     orders_by_city: DefaultDict[str, List[str]] = defaultdict(list)
-    for order_id, did in driver_id_by_order_id.items():
-        if did == driver_id:
-            orders_by_city[orders_by_id[order_id].get_city()].append(order_id)
+    for order in queries.open_orders(driver_id):
+        orders_by_city[order.get_city()].append(order.order_id)
     return orders_by_city

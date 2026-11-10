@@ -243,6 +243,43 @@
       vertical-align: middle;
     }
 
+    .unassigned-flag { color: #b7791f; border-color: #b7791f; }
+
+    .dispatch-card.unassigned { border-left: 4px solid #b7791f; }
+
+    .dispatch-field select {
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.9rem;
+      background: #fff;
+    }
+
+    .driver-panel { width: 100%; max-width: 700px; margin-top: 0.75rem; }
+
+    .driver-row { border-top: 1px solid #eee; padding: 0.5rem 0; }
+
+    .driver-row-head {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .driver-name { font-weight: 600; }
+
+    .driver-meta { font-size: 0.82rem; color: #888; }
+
+    .driver-off .driver-name { color: #999; }
+
+    .driver-row-head form { display: inline; margin: 0; }
+
+    .delivery-list { margin: 0.4rem 0 0 1rem; font-size: 0.88rem; }
+
+    .delivery-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.15rem 0; }
+
+    .delivery-item form { display: inline; margin: 0; }
+
     .dispatch-form {
       display: flex;
       align-items: flex-end;
@@ -383,6 +420,60 @@
     </div>
     {% endif %}
 
+  </div>
+
+  <div class="startup-grid">
+    <div>
+      <div style="font-size:0.85rem; color:#555; margin-bottom:0.4rem;">Add driver</div>
+      <form method="post" action="/add_driver" class="startup-form">
+        {% csrf_token %}
+        <input type="text" name="name" placeholder="Driver name" maxlength="255" required
+               style="border:1px solid #ccc; border-radius:6px; padding:0.4rem 0.6rem; font-size:0.9rem;">
+        <button class="btn-action" type="submit">Add Driver</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="driver-panel">
+    {% for entry in drivers %}
+      <div class="driver-row{% if not entry.driver.is_active %} driver-off{% endif %}">
+        <div class="driver-row-head">
+          <span class="driver-name">{{ entry.driver.name }}</span>
+          <span class="driver-meta">
+            {% if entry.driver.is_active %}on shift{% if entry.driver.current_city %} &middot; {{ entry.driver.current_city }}{% endif %}{% else %}off shift{% endif %}
+          </span>
+          <form method="post" action="/toggle_driver">
+            {% csrf_token %}
+            <input type="hidden" name="driver_id" value="{{ entry.driver.pk }}">
+            <button class="btn-clear" type="submit">{% if entry.driver.is_active %}Switch off{% else %}Switch on{% endif %}</button>
+          </form>
+          <form method="post" action="/delete_driver"
+                onsubmit="return confirm('Delete {{ entry.driver.name|escapejs }}? Their open orders go back to Unassigned. This cannot be undone.');">
+            {% csrf_token %}
+            <input type="hidden" name="driver_id" value="{{ entry.driver.pk }}">
+            <button class="btn-clear" type="submit">Delete</button>
+          </form>
+        </div>
+        {% if entry.driver.is_active %}
+          <div class="delivery-list">
+            {% for order in entry.out_for_delivery %}
+              <div class="delivery-item">
+                <span>{{ order.customer_name }} &mdash; {{ order.city }}</span>
+                <form method="post" action="/complete_order_manual">
+                  {% csrf_token %}
+                  <input type="hidden" name="order_id" value="{{ order.order_id }}">
+                  <button class="btn-action" type="submit">Mark delivered</button>
+                </form>
+              </div>
+            {% empty %}
+              <div class="driver-meta">Nothing out for delivery.</div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    {% empty %}
+      <p class="empty">No drivers yet. Add one above.</p>
+    {% endfor %}
   </div>
 
   <div class="tab-nav">

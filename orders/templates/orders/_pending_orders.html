@@ -1,14 +1,19 @@
 {% if pending_orders %}
   {% for item in pending_orders %}
-    <div class="dispatch-card{% if item.past_closing %} past-closing{% endif %}">
+    <div class="dispatch-card{% if item.past_closing %} past-closing{% endif %}{% if item.unassigned %} unassigned{% endif %}">
       <div class="dispatch-header">
         <span class="dispatch-name">
           {{ item.order.customer_name }}
+          {% if item.unassigned %}<span class="past-closing-flag unassigned-flag">UNASSIGNED</span>{% endif %}
           {% if item.past_closing %}<span class="past-closing-flag">PAST CLOSING</span>{% endif %}
         </span>
         <span class="dispatch-city">{{ item.order.city }}</span>
       </div>
-      <div class="dispatch-suggested">System suggested: {{ item.eta_start_value }}&ndash;{{ item.eta_end_value }}</div>
+      {% if item.unassigned %}
+        <div class="dispatch-suggested">{% if item.already_texted %}Already texted &mdash; just needs a driver{% else %}No driver yet, so no ETA{% endif %}</div>
+      {% else %}
+        <div class="dispatch-suggested">System suggested: {{ item.eta_start_value }}&ndash;{{ item.eta_end_value }}</div>
+      {% endif %}
       <div class="dispatch-payment">Payment: {% if item.order.payment_type %}{{ item.order.payment_type }}{% else %}checking&hellip;{% endif %}</div>
 
       {% if item.linked_companion %}
@@ -22,6 +27,25 @@
         </div>
       {% endif %}
 
+      {% if item.unassigned %}
+        {% if active_drivers %}
+          <form method="post" action="/assign_driver" class="dispatch-form">
+            {% csrf_token %}
+            <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
+            <div class="dispatch-field">
+              <label for="driver_{{ item.order.order_id }}">Driver</label>
+              <select id="driver_{{ item.order.order_id }}" name="driver_id">
+                {% for driver in active_drivers %}
+                  <option value="{{ driver.pk }}">{{ driver.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <button class="btn-action" type="submit">Assign</button>
+          </form>
+        {% else %}
+          <div class="dispatch-suggested">Switch a driver on to assign this order.</div>
+        {% endif %}
+      {% else %}
       <form method="post" action="/send_dispatch_msg" class="dispatch-form">
         {% csrf_token %}
         <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
@@ -45,6 +69,7 @@
           <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
           <button class="btn-reschedule" type="submit">Send Reschedule Instead</button>
         </form>
+      {% endif %}
       {% endif %}
 
       {% if item.is_fsa_fsm and item.link_targets %}

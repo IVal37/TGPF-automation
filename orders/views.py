@@ -6,6 +6,7 @@ from decimal import Decimal
 
 # imports from django
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q, Sum
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
@@ -13,7 +14,7 @@ from django.views.decorators.http import require_http_methods
 
 # imports from project
 from django.conf import settings
-from orders.models import Driver, Order, OPEN_STATUSES, QUEUE_STATUSES, OrderStatus
+from orders.models import Driver, Order, OrderItem, OPEN_STATUSES, QUEUE_STATUSES, OrderStatus
 from orders.services.dispatch import (
     build_dispatch_msg_from_order, build_reschedule_msg_from_order,
     extract_msg_info, get_dispatch_msg, is_fsa_fsm, is_merchant_pay_customer,
@@ -30,16 +31,20 @@ from orders.constants import BLOCKED_ADDRESSES, CITY_MINS
 from orders.services.hours import is_past_closing
 from orders.services.engine import (
     add_driver, add_order, add_shell_order, add_storefront_order,
-    cancel_order, complete_order, delete_driver,
+    assign_order, cancel_order, complete_order, delete_driver, remove_driver,
 )
-from orders.services.state import active_drivers, completed_orders, drivers_by_id, restock_items
+from orders.services import queries
 from orders.webhooks import client_ip, require_webhook_key
 
 logger = logging.getLogger(__name__)
 
 # orders with a real ETA window still waiting on a dispatcher to approve/send
 def _pending_queryset():
-    return Order.objects.filter(status__in=QUEUE_STATUSES, is_shell=False, eta_start__isnull=False)
+    # queued orders with an ETA window to approve, plus today's unassigned orders
+    # (no driver yet, so no ETA) waiting for a dispatcher to pick a driver
+    queued = Q(status__in=QUEUE_STATUSES, eta_start__isnull=False)
+    unassigned = Q(status__in=OPEN_STATUSES, driver__isnull=True, order_date__date=queries.today())
+    return Order.objects.filter(queued | unassigned, is_shell=False)
 
 # status is the source of truth; dispatch_sent is kept written for one release
 # (rollback safety) and never read
@@ -57,15 +62,24 @@ def _queue_webjoint(task, order_id: str, webjoint_id: str, *args) -> None:
     task.delay(webjoint_id, *args)
 
 def _pending_orders():
-    orders_list = list(_pending_queryset().order_by('eta_start'))
+    # unassigned cards first (they need a driver before anything else), then by ETA
+    orders_list = sorted(
+        _pending_queryset(),
+        key=lambda o: (o.driver_id is not None, o.eta_start or o.order_date, o.pk),
+    )
     result = []
     for order in orders_list:
         order_is_fsa_fsm = is_fsa_fsm(order.customer_name)
+        unassigned = order.driver_id is None
         result.append({
             "order": order,
-            "eta_start_value": order.eta_start.strftime("%H:%M"),
-            "eta_end_value": order.eta_end.strftime("%H:%M"),
-            "past_closing": is_past_closing(order.eta_start),
+            "unassigned": unassigned,
+            # an unassigned order that was texted anyway (under-min, or its driver
+            # was switched off after the dispatch text went out)
+            "already_texted": unassigned and order.status == OrderStatus.SENT,
+            "eta_start_value": order.eta_start.strftime("%H:%M") if order.eta_start else "",
+            "eta_end_value": order.eta_end.strftime("%H:%M") if order.eta_end else "",
+            "past_closing": bool(order.eta_start) and is_past_closing(order.eta_start),
             "is_fsa_fsm": order_is_fsa_fsm,
             # only set once this order (a real customer's) has an FSA/FSM
             # order linked to it as the second part of a legal-limit split
@@ -83,16 +97,35 @@ def _pending_orders():
 def pending_orders_partial(request):
     """Renders just the dispatch-queue cards, polled by the dashboard's JS to
     auto-refresh that tab without a full page reload."""
-    return render(request, 'orders/_pending_orders.html', {'pending_orders': _pending_orders()})
+    return render(request, 'orders/_pending_orders.html', {
+        'pending_orders': _pending_orders(),
+        'active_drivers': list(queries.active_drivers()),
+    })
+
+# completed delivery orders not yet ticked under "Restock Time"
+def _unreconciled_orders():
+    return Order.objects.filter(status=OrderStatus.COMPLETED, is_shell=False, restock_reconciled=False)
+
+# the restock tab: the orders waiting to be reconciled, and the list of what to
+# restock (reconciled orders' items, summed, until "Complete Restock" clears them)
+def _restock_context():
+    rows = (
+        OrderItem.objects
+        .filter(order__restock_reconciled=True, order__restock_cleared=False)
+        .values('product_name')
+        .annotate(quantity=Sum('quantity'))
+        .order_by('product_name')
+    )
+    return {
+        'completed_orders': list(_unreconciled_orders().order_by('pk')),
+        'restock_items': {row['product_name']: {'quantity': row['quantity']} for row in rows},
+    }
 
 @login_required
 def restock_partial(request):
     """Renders just the completed-orders/restock-list content, polled by the
     dashboard's JS to auto-refresh that tab without a full page reload."""
-    return render(request, 'orders/_restock.html', {
-        'completed_orders': completed_orders,
-        'restock_items': restock_items,
-    })
+    return render(request, 'orders/_restock.html', _restock_context())
 
 @login_required
 @require_http_methods(["POST"])
@@ -104,23 +137,71 @@ def clear_dispatch_queue_view(request):
     _pending_queryset().update(status=OrderStatus.SENT, dispatch_sent=True)
     return redirect("/")
 
+# every driver (on shift or not) with what they are currently out delivering,
+# for the Startup panel
+def _driver_panel():
+    return [
+        {"driver": driver, "out_for_delivery": list(queries.out_for_delivery(driver.pk)) if driver.is_active else []}
+        for driver in Driver.objects.order_by("pk")
+    ]
+
 @login_required
 def order_list(request):
     pending_orders = _pending_orders()
     return render(request, 'orders/order_list.html', {
-        'completed_orders': completed_orders,
-        'restock_items': restock_items,
-        'active_drivers': active_drivers,
+        **_restock_context(),
+        'active_drivers': list(queries.active_drivers()),
+        'drivers': _driver_panel(),
         'cities': sorted(CITY_MINS.keys()),
         'pending_orders': pending_orders,
     })
 
 @login_required
 @require_http_methods(["POST"])
-def add_dummy_driver(request):
-    count = Driver.objects.count()
-    driver = Driver.objects.create(name=f"Driver {count + 1}")
-    add_driver(driver.pk)
+def add_driver_view(request):
+    """Creates a driver (starting the day in Davis) and puts them on shift."""
+    name = request.POST.get("name", "").strip()[:255]
+    if name:
+        driver = Driver.objects.create(name=name)
+        add_driver(driver.pk)
+        driver.set_current_city("Davis")
+    return redirect("/")
+
+@login_required
+@require_http_methods(["POST"])
+def toggle_driver_view(request):
+    """Switches a driver on or off shift. Switching one off unassigns their open orders."""
+    driver = get_object_or_404(Driver, pk=request.POST.get("driver_id"))
+    if driver.is_active:
+        remove_driver(driver.pk)
+    else:
+        add_driver(driver.pk)
+    return redirect("/")
+
+@login_required
+@require_http_methods(["POST"])
+def assign_driver_view(request):
+    """Hands an unassigned order to a driver. A queued order gets its ETA now and
+    becomes a normal Dispatch Queue card; one that was already texted just gets
+    the driver (the customer keeps the ETA they were told)."""
+    order = get_object_or_404(
+        Order, order_id=request.POST.get("order_id"),
+        status__in=OPEN_STATUSES, is_shell=False, driver__isnull=True,
+    )
+    driver = get_object_or_404(Driver, pk=request.POST.get("driver_id"), is_active=True)
+    was_queued = order.status in QUEUE_STATUSES
+
+    assign_order(order.order_id, driver.pk)
+
+    if was_queued and _is_no_text(order.customer_name) and not settings.RESTOCK_TEST_MODE:
+        # new_order skipped this customer's notes while there was no driver/ETA
+        fresh = Order.objects.get(order_id=order.order_id)
+        if fresh.payment_type:
+            _queue_webjoint(fill_order_notes_task, fresh.order_id, fresh.webjoint_id, get_order_notes(fresh))
+        else:
+            # the payment lookup is still running; its task writes the note once it lands
+            resolve_payment_type_task.delay(fresh.order_id, write_notes=True)
+        _mark_dispatch_sent(fresh.order_id)
     return redirect("/")
 
 @login_required
@@ -151,6 +232,10 @@ def legacy_webhook(request):
     CSRF only so a POST gets this logged 403 rather than a bare CSRF failure."""
     logger.warning("webhook hit on retired path %s from %s", request.path, client_ip(request))
     return HttpResponseForbidden()
+
+# the one hardcoded customer we never text
+def _is_no_text(customer_name: str) -> bool:
+    return customer_name.strip().lower() == "mohsen awara"
 
 @csrf_exempt
 @require_webhook_key
@@ -213,27 +298,37 @@ def new_order(request):
         resolve_payment = True
         weedmaps_order_id = str(data.get("weedmapsOrderId") or "")
 
-    add_order(
+    # a scheduled order keeps the window the customer picked, so it can still be
+    # applied if the order is assigned to a driver later
+    cart = data.get("cart") or {}
+    scheduled = cart.get("deliveryTiming") == "Scheduled" and cart.get("scheduledStart") and cart.get("scheduledEnd")
+
+    order = add_order(
         order_city=data["shipping"]["city"],
         customer_phone=data["customer"]["phone"][1:],
         webjoint_id=webjoint_id,
         weedmaps_order_id=weedmaps_order_id,
         status=OrderStatus.AWAITING_PAYMENT if resolve_payment else OrderStatus.AWAITING_APPROVAL,
+        scheduled_start=parse_webhook_time(cart["scheduledStart"]) if scheduled else None,
+        scheduled_end=parse_webhook_time(cart["scheduledEnd"]) if scheduled else None,
         **order_fields,
     )
+    # nobody was on shift: the order is saved without a driver and waits in the
+    # Dispatch Queue as an Unassigned card (see assign_driver_view)
+    unassigned = order.driver_id is None
     msg_dict = extract_msg_info(data)
     if resolve_payment:
         msg_dict["pay_type"] = ""
-    # always computed: sets order.eta_start/eta_end via get_eta (including any
-    # scheduled-order override) and routes under-min vs normal internally. For
-    # normal (has-ETA) orders the returned text is discarded below — the real
-    # send happens later from send_dispatch_msg_view, once a dispatcher has
-    # approved or edited the ETA window.
-    dispatch_msg = get_dispatch_msg(msg_dict)
-    Order.objects.filter(order_id=msg_dict["id"]).update(payment_type=msg_dict["pay_type"])
-
-    no_text = data["customer"]["name"].strip().lower() == "mohsen awara"
+    no_text = _is_no_text(data["customer"]["name"])
     under_min = is_under_min(msg_dict)
+    # sets order.eta_start/eta_end via get_eta (including any scheduled-order
+    # override) and routes under-min vs normal internally. For normal (has-ETA)
+    # orders the returned text is discarded below — the real send happens later
+    # from send_dispatch_msg_view, once a dispatcher has approved or edited the
+    # ETA window. An unassigned order has no route to estimate from, so it skips
+    # this; the under-min text needs no ETA, so that one is still built.
+    dispatch_msg = None if unassigned and not under_min else get_dispatch_msg(msg_dict)
+    Order.objects.filter(order_id=msg_dict["id"]).update(payment_type=msg_dict["pay_type"])
 
     if not settings.RESTOCK_TEST_MODE:
         if under_min:
@@ -242,7 +337,7 @@ def new_order(request):
                 send_message_task.delay(msg_dict["phone"], dispatch_msg)
             _queue_webjoint(fill_order_notes_task, msg_dict["id"], webjoint_id, "reached out about under min")
             _mark_dispatch_sent(msg_dict["id"])
-        elif no_text:
+        elif no_text and not unassigned:
             # excluded customer: we never text them, so there's nothing to hold
             # for approval — write notes with the system-computed window now.
             # For a Weedmaps order the note depends on the payment type, which
@@ -260,7 +355,7 @@ def new_order(request):
 
         # first in the browser queue, since a dispatcher is waiting on it
         if resolve_payment:
-            resolve_payment_type_task.delay(msg_dict["id"], write_notes=no_text and not under_min)
+            resolve_payment_type_task.delay(msg_dict["id"], write_notes=no_text and not under_min and not unassigned)
         # pull the order's items, and dispatch it if it's still Pending
         _queue_webjoint(prepare_order_task, msg_dict["id"], webjoint_id, data.get("status") == "Pending")
     return JsonResponse({"status": "ok"})
@@ -272,6 +367,11 @@ def send_dispatch_msg_view(request):
     eta_start_str = request.POST.get("eta_start")
     eta_end_str = request.POST.get("eta_end")
     order = get_object_or_404(Order, order_id=order_id, status__in=QUEUE_STATUSES)
+
+    if order.driver_id is None:
+        # no driver means no ETA window to send
+        logger.warning("send_dispatch_msg: order %s has no driver yet; not sent", order_id)
+        return redirect("/")
 
     if not order.payment_type:
         # the payment type changes the price in the text; sending before it's
@@ -385,24 +485,14 @@ def cancel_order_view(request):
 @login_required
 @require_http_methods(["POST"])
 def reconcile_restock(request):
-    selected_ids = set(request.POST.getlist("order_ids"))
-    to_remove = []
-    for entry in completed_orders:
-        if entry["order_id"] in selected_ids:
-            for item in entry["items"]:
-                name = item["product_name"]
-                if name in restock_items:
-                    restock_items[name]["quantity"] += item["quantity"]
-                else:
-                    restock_items[name] = {"quantity": item["quantity"], "price": item["price"]}
-            to_remove.append(entry["order_id"])
-    completed_orders[:] = [e for e in completed_orders if e["order_id"] not in to_remove]
+    selected_ids = request.POST.getlist("order_ids")
+    _unreconciled_orders().filter(order_id__in=selected_ids).update(restock_reconciled=True)
     return redirect("/")
 
 @login_required
 @require_http_methods(["POST"])
 def clear_restock(request):
-    restock_items.clear()
+    Order.objects.filter(restock_reconciled=True, restock_cleared=False).update(restock_cleared=True)
     return redirect("/")
 
 @login_required
@@ -410,7 +500,10 @@ def clear_restock(request):
 def add_shell_order_view(request):
     city = request.POST.get("city")
     if city:
-        add_shell_order(city)
+        try:
+            add_shell_order(city)
+        except ValueError:
+            logger.warning("add_shell_order: no driver on shift; shell for %s not added", city)
     return redirect("/")
 
 @login_required
@@ -427,5 +520,5 @@ def set_driver_location_view(request):
     driver_id = request.POST.get("driver_id")
     city = request.POST.get("city")
     if driver_id and city:
-        drivers_by_id[int(driver_id)].set_current_city(city)
+        get_object_or_404(Driver, pk=int(driver_id), is_active=True).set_current_city(city)
     return redirect("/")

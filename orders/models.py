@@ -3,6 +3,7 @@ from datetime import datetime
 
 # imports from django
 from django.db import models
+from django.utils import timezone
 
 # imports from project
 from orders.services.time import format_time
@@ -12,6 +13,9 @@ class Driver(models.Model):
     name = models.CharField(max_length=255)
     current_city = models.CharField(max_length=255, blank=True)
     is_active = models.BooleanField(default=False)
+    # when current_city was last set; on startup a city from an earlier day is
+    # reset to Davis, one set today is kept
+    location_updated_at = models.DateTimeField(null=True, blank=True)
 
     def get_id(self) -> int:
         return self.pk
@@ -21,11 +25,12 @@ class Driver(models.Model):
 
     def set_current_city(self, city: str) -> None:
         self.current_city = city
-        self.save()
+        self.location_updated_at = timezone.now()
+        self.save(update_fields=["current_city", "location_updated_at"])
 
     def add_order(self, order) -> None:
         order.driver = self
-        order.save()
+        order.save(update_fields=["driver"])
 
     def get_active_orders(self):
         return list(self.orders.all())
@@ -65,6 +70,10 @@ class Order(models.Model):
     )
     eta_start = models.DateTimeField(null=True, blank=True)
     eta_end = models.DateTimeField(null=True, blank=True)
+    # the delivery window a customer picked for a scheduled order, kept so it can
+    # still be applied if the order is assigned to a driver after it arrives
+    scheduled_start = models.DateTimeField(null=True, blank=True)
+    scheduled_end = models.DateTimeField(null=True, blank=True)
     source = models.CharField(max_length=100, blank=True)
     payment_type = models.CharField(max_length=100, blank=True)
     discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -83,6 +92,11 @@ class Order(models.Model):
     completed = models.BooleanField(default=False)
     dispatch_sent = models.BooleanField(default=False)
     is_storefront = models.BooleanField(default=False)
+    # restock tab: a completed delivery order is "reconciled" once the dispatcher
+    # ticks it under Restock Time (its items join the restock list), and
+    # "cleared" once Complete Restock empties that list
+    restock_reconciled = models.BooleanField(default=False)
+    restock_cleared = models.BooleanField(default=False)
     # set on the companion (FSA/FSM) order, pointing at the real customer's
     # order it's actually part of — see engine.get_effective_total
     linked_order = models.ForeignKey(
@@ -102,7 +116,7 @@ class Order(models.Model):
     def set_etas(self, start: datetime, end: datetime) -> None:
         self.eta_start = start
         self.eta_end = end
-        self.save()
+        self.save(update_fields=["eta_start", "eta_end"])
 
     def __str__(self):
         if self.eta_start and self.eta_end:
