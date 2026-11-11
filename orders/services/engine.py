@@ -10,6 +10,7 @@ import uuid
 from django.utils import timezone
 
 # imports from project
+from orders.constants import STOREFRONT_CITY
 from orders.models import Order, OrderItem, Driver, OrderStatus, QUEUE_STATUSES
 from orders.services import queries
 from orders.services.travel import get_travel_time
@@ -135,7 +136,7 @@ def add_storefront_order(
     order = Order(
         order_id=order_id,
         customer_name=customer_name,
-        city="3rd St",
+        city=STOREFRONT_CITY,
         order_date=order_time,
         source=source,
         discount=discount,

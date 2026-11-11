@@ -9,7 +9,7 @@ from django.conf import settings
 
 # imports from project
 from orders.services.scrapers.browser import browser_session, click, fill, scroll_into_view
-from orders.services.scrapers.merchant_pay_helper import FetchCode as GetCode
+from orders.services.scrapers.merchant_pay_helper import fetch_2fa_code
 
 # imports from selenium
 from selenium.webdriver.common.by import By
@@ -27,7 +27,7 @@ def send_merchant_pay_link():
             pass
 
         try:
-            code = GetCode()
+            code = fetch_2fa_code()
         except Exception as e:
             logger.error("send_merchant_pay_link: fetching 2FA code failed: %s", e)
             code = None

@@ -597,5 +597,5 @@ class ScraperTraceTests(SimpleTestCase):
         self.run_scenario(
             "merchant_pay_send_merchant_pay_link",
             merchant_pay.send_merchant_pay_link,
-            extra_patches=[patch.object(merchant_pay, "GetCode", lambda: "123456")],
+            extra_patches=[patch.object(merchant_pay, "fetch_2fa_code", lambda: "123456")],
         )

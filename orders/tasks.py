@@ -8,6 +8,7 @@ from django.db.models import Sum
 from django.utils import timezone
 
 # imports from project
+from orders.constants import PaymentType
 from orders.models import Order, OrderItem, OrderStatus
 from orders.services.dispatch import get_adjusted_total, get_effective_total, split_name
 from orders.services.money import round_money
@@ -187,7 +188,7 @@ def send_merchant_pay_link_task(order_id: str) -> None:
     if order is None:
         logger.warning("send_merchant_pay_link (order %s): no such order", order_id)
         return
-    amount = round_money(get_adjusted_total(get_effective_total(order), "Merchant Pay - ACH"))
+    amount = round_money(get_adjusted_total(get_effective_total(order), PaymentType.MERCHANT_PAY))
     message = f"Send merchant pay link to {_customer_label(order)} for ${amount}"
     logger.info("%s (order %s)", message, order_id)
     add_notice(f"{message} (order {order_id})")

@@ -1,5 +1,5 @@
 # imports from project
-from orders.constants import CARD_FEE_MULTIPLIER
+from orders.constants import CARD_FEE_MULTIPLIER, PaymentType
 from orders.services.dispatch import get_effective_total, is_weedmaps_source
 from orders.services.money import round_money
 from orders.services.time import format_time
@@ -13,10 +13,10 @@ def get_order_notes(order):
     payment_type = order.payment_type
     debit_total = round_money(get_effective_total(order) * CARD_FEE_MULTIPLIER)
 
-    if payment_type == "Cash":
+    if payment_type == PaymentType.CASH:
         first_line = "WM says cash" if is_wm else "cash"
         first_line += f"\nif TTP: ${debit_total}"
-    elif payment_type == "Merchant Pay - ACH":
+    elif payment_type == PaymentType.MERCHANT_PAY:
         first_line = "merchant pay: sent"
     else:
         first_line = f"TTP: ${debit_total}"

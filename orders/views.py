@@ -14,6 +14,7 @@ from django.views.decorators.http import require_http_methods
 
 # imports from project
 from django.conf import settings
+from orders.constants import HOME_CITY, PaymentType
 from orders.models import Driver, Notice, Order, OrderItem, OPEN_STATUSES, QUEUE_STATUSES, OrderStatus
 from orders.services.dispatch import (
     build_dispatch_msg_from_order, build_reschedule_msg_from_order,
@@ -181,7 +182,7 @@ def add_driver_view(request):
     if name:
         driver = Driver.objects.create(name=name)
         add_driver(driver.pk)
-        driver.set_current_city("Davis")
+        driver.set_current_city(HOME_CITY)
     return redirect("/")
 
 @login_required
@@ -429,7 +430,7 @@ def send_dispatch_msg_view(request):
         if not request.POST.get("as_cash"):
             logger.warning("send_dispatch_msg: order %s has no payment type yet; not sent", order_id)
             return redirect("/")
-        order.payment_type = "Cash"
+        order.payment_type = PaymentType.CASH
         order.save()
     elif request.POST.get("as_cash"):
         # the lookup finished after this page loaded; show the real value first

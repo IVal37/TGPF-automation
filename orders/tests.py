@@ -21,7 +21,7 @@ from orders.services.dispatch import (
     get_adjusted_total,
     get_effective_total,
     is_fsa_fsm,
-    CalculateForMinCheck,
+    min_check_total,
 )
 from orders import views as orders_views
 from orders.models import Driver, Order
@@ -138,18 +138,18 @@ class TestExtractMsgInfo(SimpleTestCase):
         self.assertEqual(self.result["source"], "External")
 
 
-# ── CalculateForMinCheck ──────────────────────────────────────────────────────
+# ── min_check_total ──────────────────────────────────────────────────────
 
-class TestCalculateForMinCheck(SimpleTestCase):
+class Testmin_check_total(SimpleTestCase):
     def test_subtracts_discount_from_subtotal(self):
         self.assertEqual(
-            CalculateForMinCheck(_msg(sub_total=Decimal("65.98"), discount=Decimal("13.20"))),
+            min_check_total(_msg(sub_total=Decimal("65.98"), discount=Decimal("13.20"))),
             Decimal("52.78"),
         )
 
     def test_zero_discount(self):
         self.assertEqual(
-            CalculateForMinCheck(_msg(sub_total=50.00, discount=Decimal("0"))),
+            min_check_total(_msg(sub_total=50.00, discount=Decimal("0"))),
             Decimal("50.00"),
         )
 

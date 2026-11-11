@@ -28,9 +28,4 @@ def round_time(dt, minutes=15, *, strict=False):
 # @returns:
 #   dt_str - datetime as string
 def format_time(dt):
-    try:
-        dt_str = dt.strftime("%-I:%M")
-    except ValueError:
-        dt_str = dt.strftime("%#I:%M")
-    
-    return dt_str
+    return f"{dt.hour % 12 or 12}:{dt.minute:02d}"

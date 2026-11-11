@@ -13,6 +13,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
 # imports from project
+from orders.constants import PaymentType
 from orders.services.scrapers.browser import browser_session, click, fill
 from orders.services.scrapers.errors import BeforeCommitError
 
@@ -27,7 +28,7 @@ from orders.services.scrapers.errors import BeforeCommitError
 # "Cash" with no browser. The order stays "Payment: checking..." on the
 # dashboard after a final failure, where "Send as cash" is still available.
 def get_wm_payment_type(weedmaps_order_id):
-    payment_type = "Cash"
+    payment_type = PaymentType.CASH
 
     if not weedmaps_order_id:
         logger.warning("get_wm_payment_type: no Weedmaps order id in the webhook; defaulting to Cash")
@@ -97,7 +98,7 @@ def get_wm_payment_type(weedmaps_order_id):
 
 def regularize_type(wm_type: str) -> str:
     if wm_type == "Cashless":
-        return "Debit / Tap-to-pay"
+        return PaymentType.DEBIT
     else:
-        return "Cash"
+        return PaymentType.CASH
 

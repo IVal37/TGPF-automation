@@ -13,7 +13,7 @@ CODE_SENDER = "donotreply@greenbaxmarketplace.io"
 
 CODE_RE = re.compile(r"\b(\d{6})\b")
 
-def FetchCode(timeout=120, poll=5):
+def fetch_2fa_code(timeout=120, poll=5):
     end = time.time() + timeout
     with imaplib.IMAP4_SSL(IMAP_HOST) as M:
         M.login(settings.MERCHANT_PAY_IMAP_USER, settings.MERCHANT_PAY_IMAP_PASS)

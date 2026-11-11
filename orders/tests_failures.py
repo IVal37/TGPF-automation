@@ -581,7 +581,7 @@ class TestFailureArtifacts(SimpleTestCase):
         self.assertEqual(Path(real_settings.FAILURE_DIR), Path(real_settings.BASE_DIR) / "logs" / "failures")
 
 
-class TestFetchCodeReadsCredentialsWhenCalled(SimpleTestCase):
+class TestFetch2faCode(SimpleTestCase):
     def test_imap_credentials_come_from_settings(self):
         from orders.services.scrapers import merchant_pay_helper
         mailbox = MagicMock()
@@ -591,7 +591,7 @@ class TestFetchCodeReadsCredentialsWhenCalled(SimpleTestCase):
         mailbox.fetch.return_value = ("OK", [(b"1", message)])
         with override_settings(MERCHANT_PAY_IMAP_USER="me@example.com", MERCHANT_PAY_IMAP_PASS="secret"), \
              patch.object(merchant_pay_helper.imaplib, "IMAP4_SSL", return_value=mailbox):
-            code = merchant_pay_helper.FetchCode(timeout=1, poll=0)
+            code = merchant_pay_helper.fetch_2fa_code(timeout=1, poll=0)
         mailbox.login.assert_called_once_with("me@example.com", "secret")
         self.assertEqual(code, "123456")
 

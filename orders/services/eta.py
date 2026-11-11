@@ -8,7 +8,9 @@ from orders.services import queries
 from orders.services.engine import get_driver_city_queues
 from orders.services.time import round_time, format_time
 from orders.services.hours import clamp_to_opening
-from orders.constants import _DELIVERY_TIME
+from orders.constants import (
+    BUSY_ORDER_COUNT, BUSY_WINDOW_MINUTES, DELIVERY_MINUTES, MAX_LEAD_MINUTES, MIN_LEAD_MINUTES, WINDOW_MINUTES,
+)
 from orders.services.travel import get_travel_time
 
 # a customer who picked a delivery window gets that window when it is no earlier
@@ -33,7 +35,7 @@ def get_eta(order_id: str):
     city_travel_time = []
     for iter_city in driver_queue_by_city:
         city_travel_time.append({'city': iter_city, 'time': get_travel_time(driver_location, iter_city)})
-    city_travel_time.sort(key=lambda cities: cities['time'])
+    city_travel_time.sort(key=lambda entry: entry['time'])
 
     # create one master list of orders sorted by city and within city
     orders_in_order: List[str] = []
@@ -46,12 +48,15 @@ def get_eta(order_id: str):
     minutes_to_order = get_eta_minutes(driver_location, orders_in_order, order_id, cities)
     raw_eta: datetime = order_created_time + timedelta(minutes=minutes_to_order)
 
-    # clamp: minimum 30 mins out, maximum 2 hours out from order creation
-    clamped_eta = max(order_created_time + timedelta(minutes=30), min(raw_eta, order_created_time + timedelta(hours=2)))
+    # clamp: never sooner than MIN_LEAD or later than MAX_LEAD after order creation
+    clamped_eta = max(
+        order_created_time + timedelta(minutes=MIN_LEAD_MINUTES),
+        min(raw_eta, order_created_time + timedelta(minutes=MAX_LEAD_MINUTES)),
+    )
 
-    # window: 90 mins if more than 5 real (non-shell) active orders, otherwise 60 mins
+    # window: longer when there are more than BUSY_ORDER_COUNT real (non-shell) open orders
     real_order_count = queries.open_real_order_count()
-    window_mins: int = 90 if real_order_count > 5 else 60
+    window_mins: int = BUSY_WINDOW_MINUTES if real_order_count > BUSY_ORDER_COUNT else WINDOW_MINUTES
 
     # slide the anchor from window-start (1st stop on the route) toward window-middle (later stops)
     # so later customers see a tighter, more accurate window rather than a padded one.
@@ -77,7 +82,7 @@ def get_eta_minutes(start_city: str, order_ids_list: List[str], search_id: str, 
     for order_id in order_ids_list:
         next_location: str = cities[order_id]
 
-        minutes_to_add: int = get_travel_time(curr_location, next_location) + _DELIVERY_TIME
+        minutes_to_add: int = get_travel_time(curr_location, next_location) + DELIVERY_MINUTES
         minutes += minutes_to_add
 
         if order_id == search_id:

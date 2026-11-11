@@ -11,7 +11,8 @@ from orders.services.eta import apply_scheduled_window, get_eta
 from orders.services.time import format_time, parse_webhook_time
 from orders.services.hours import closing_dt
 from orders.constants import (
-    CARD_FEE_MULTIPLIER, DIRECT_SOURCES, FSA_FSM_NAMES, VALEDICTIONS,
+    BIG_MINIMUM, CARD_FEE_MULTIPLIER, DIRECT_SOURCES, FSA_FSM_NAMES, MERCHANT_PAY_FLAT_FEE,
+    MERCHANT_PAY_RATE, VALEDICTIONS, PaymentType,
 )
 
 # is this the "Frank Sinatra Adult"/"Frank Sinatra Medical" placeholder
@@ -75,21 +76,21 @@ def extract_msg_info(full_dict):
 #   ret_msg - message to be sent to customer
 def get_dispatch_msg(dict):
     if is_under_min(dict):
-        return under_min_msg(dict, _city_min(dict), CalculateForMinCheck(dict))
+        return under_min_msg(dict, _city_min(dict), min_check_total(dict))
     return normal_dispatch_msg(dict)
 
 def _city_min(dict):
     return config.city_min(dict["city"])
 
 def is_under_min(dict):
-    return CalculateForMinCheck(dict) <= _city_min(dict)
+    return min_check_total(dict) <= _city_min(dict)
 
 # calculate total used for minimum check
 # @params:
 #   dict - parsed dict with elements to be used
 # @returns:
 #   min_total - total before taxes and after discounts
-def CalculateForMinCheck(dict):
+def min_check_total(dict):
     sub_total = dict["sub_total"]
     discount = dict["discount"]
 
@@ -133,7 +134,7 @@ def render_dispatch_msg(name, last_name, discount, total, payment_type, early_et
 
     in_area_text = f"will be in the area between {early_eta}-{late_eta}"
 
-    card_fee_text = "" if payment_type in ("Cash", "Merchant Pay - ACH") else "including card fee "
+    card_fee_text = "" if payment_type in (PaymentType.CASH, PaymentType.MERCHANT_PAY) else "including card fee "
 
     merch_pay_used_bool = is_merchant_pay_customer(name, last_name)
     merch_pay_fee_text = "including Merchant Pay fee " if merch_pay_used_bool else ""
@@ -210,7 +211,7 @@ def under_min_msg(dict, city_min, order_min_amount):
     orderDiff = city_min - order_min_amount
 
     # just cancel order if big min and small order
-    if city_min > Decimal("100.00") and orderDiff > (city_min / 2):
+    if city_min > BIG_MINIMUM and orderDiff > (city_min / 2):
         options_text = "I am going to go ahead and cancel this order, please reach out or place a new order."
     else:
         options_text = "Could we add something to your order to get you above the minimum?"
@@ -232,10 +233,10 @@ def under_min_msg(dict, city_min, order_min_amount):
 # @returns:
 #   ret_total - adjusted total to be payed
 def get_adjusted_total(base_total, payment_type):
-    if payment_type == "Cash":
+    if payment_type == PaymentType.CASH:
         ret_total = base_total
-    elif payment_type == "Merchant Pay - ACH":
-        ret_total = base_total + (base_total * Decimal("0.0225")) + Decimal("0.35")
+    elif payment_type == PaymentType.MERCHANT_PAY:
+        ret_total = base_total + (base_total * MERCHANT_PAY_RATE) + MERCHANT_PAY_FLAT_FEE
     else:
         ret_total = base_total * CARD_FEE_MULTIPLIER
     
