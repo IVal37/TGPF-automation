@@ -256,9 +256,12 @@ class TestScheduledWindowAtIntake(TestCase):
 
     def _place(self, start_in, end_in):
         from datetime import timedelta
+
         from orders.services.time import parse_webhook_time
         Driver.objects.create(name="D1", is_active=True, current_city="Davis")
-        stamp = lambda delta: (datetime.utcnow() + delta).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+        def stamp(delta):
+            return (datetime.utcnow() + delta).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
         cart = {"deliveryTiming": "Scheduled", "scheduledStart": stamp(start_in), "scheduledEnd": stamp(end_in)}
         body = dict(POS_ORDER, created=stamp(timedelta(0)), cart=cart, subtotal=500, total=500, discount=0)
         with patch("orders.tasks.prepare_order_task"):

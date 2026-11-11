@@ -2,25 +2,26 @@
 import logging
 import time
 
-logger = logging.getLogger(__name__)
-
 # imports from django
 from django.conf import settings
-
-# imports from project
-from orders.services.scrapers.browser import browser_session, click, fill, scroll_into_view
-from orders.services.scrapers.merchant_pay_helper import fetch_2fa_code
 
 # imports from selenium
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
+# imports from project
+from orders.services.scrapers.browser import browser_session, click, fill, scroll_into_view
+from orders.services.scrapers.merchant_pay_helper import fetch_2fa_code
+
+logger = logging.getLogger(__name__)
+
+
 def send_merchant_pay_link():
     with browser_session("send_merchant_pay_link") as (driver, wait):
         driver.get("https://merchantpay.greenbaxmarketplace.io/login")
 
-        try:          
+        try:
             fill(wait, (By.ID, "mat-input-0"), settings.MERCHANT_PAY_EMAIL)
             fill(wait, (By.ID, "mat-input-1"), settings.MERCHANT_PAY_PASSWORD)
             click(wait, (By.XPATH, "/html/body/app-root/app-login-page/app-login/app-not-auth/div/section/form/button"))

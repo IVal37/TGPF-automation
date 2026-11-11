@@ -4,6 +4,7 @@ from orders.services.pricing import effective_total, round_money
 from orders.services.time import format_time
 from orders.services.webhook_payload import is_weedmaps_source
 
+
 # builds order-notes text for WebJoint from an Order model instance.
 # reads payment_type/total/eta directly off the order, so the caller is
 # responsible for passing an order whose fields reflect the final, approved

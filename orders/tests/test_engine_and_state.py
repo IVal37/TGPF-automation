@@ -1,5 +1,5 @@
-from decimal import Decimal
 from datetime import datetime, timedelta
+from decimal import Decimal
 
 from django.contrib.auth.models import User
 from django.test import RequestFactory, SimpleTestCase, TestCase
@@ -227,7 +227,7 @@ class TestNoStaleSaves(DbTruthCase):
 
     def test_driver_add_order_leaves_other_fields_alone(self):
         driver = self._driver("D1")
-        order = Order.objects.create(order_id="x", city="Davis", order_date=self.BASE)
+        Order.objects.create(order_id="x", city="Davis", order_date=self.BASE)
         stale = Order.objects.get(order_id="x")
         Order.objects.filter(order_id="x").update(payment_type="Cash", status=Order.Status.SENT)
         driver.add_order(stale)
@@ -324,8 +324,10 @@ class TestRemoveAndDeleteDriver(DbTruthCase):
         self.d1, self.d2 = self._driver("D1"), self._driver("D2")
         self._add("queued", "Davis")                       # -> D1
         self._add("other", "Davis")                        # -> D2
-        self._add("out", "Davis"); Order.objects.filter(order_id="out").update(status=Order.Status.SENT, driver=self.d1)
-        self._add("done", "Davis"); complete_order("done")
+        self._add("out", "Davis")
+        Order.objects.filter(order_id="out").update(status=Order.Status.SENT, driver=self.d1)
+        self._add("done", "Davis")
+        complete_order("done")
         Order.objects.filter(order_id="queued").update(driver=self.d1)
         add_shell_order("Davis")
         Order.objects.filter(is_shell=True).update(driver=self.d1)

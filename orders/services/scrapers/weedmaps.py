@@ -2,21 +2,22 @@
 import logging
 import time
 
-logger = logging.getLogger(__name__)
-
 # imports from django
 from django.conf import settings
 
 # imports from selenium
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 # imports from project
 from orders.constants import PaymentType
 from orders.services.scrapers.browser import browser_session, click, fill
 from orders.services.scrapers.errors import BeforeCommitError
+
+logger = logging.getLogger(__name__)
+
 
 # weedmaps_order_id is the number Weedmaps shows as "#49018286"; WebJoint's
 # webhook carries it as "weedmapsOrderId". We open exactly that order, and only
@@ -40,7 +41,7 @@ def get_wm_payment_type(weedmaps_order_id):
         driver.get("https://weedmaps.com/login?return_url=https://admin.weedmaps.com/orders")
 
         # intial login
-        try:          
+        try:
             fill(wait, (By.ID, "user_username"), settings.WEEDMAPS_EMAIL)
             fill(wait, (By.ID, "user_password"), settings.WEEDMAPS_PASSWORD)
             click(wait, (By.CLASS_NAME, "btn.btn-signup-primary"))
@@ -48,7 +49,7 @@ def get_wm_payment_type(weedmaps_order_id):
             pass
 
         # move to orders
-        try:          
+        try:
             click(wait, (By.ID, "side-nav-orders-all-orders"))
         except WebDriverException:
             pass

@@ -174,7 +174,9 @@ class TestNewOrderUsesTheConfig(TestCase):
 
     def _post(self, **shipping):
         import json
+
         from django.conf import settings
+
         from orders.tests.helpers import POS_ORDER
         from orders.views import new_order
         payload = {**POS_ORDER, "shipping": {"city": "Davis", **shipping}}

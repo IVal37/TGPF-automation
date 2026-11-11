@@ -1,5 +1,5 @@
-from decimal import Decimal
 from datetime import timedelta
+from decimal import Decimal
 
 from django.test import SimpleTestCase
 
@@ -63,7 +63,9 @@ class TestParseNewOrder(SimpleTestCase):
             result.require_delivery_fields()
 
     def test_missing_or_unreadable_fields_are_rejected(self):
-        without = lambda key: {k: v for k, v in SAMPLE_ORDER.items() if k != key}
+        def without(key):
+            return {k: v for k, v in SAMPLE_ORDER.items() if k != key}
+
         bad_bodies = {
             "no id": without("id"),
             "no created": without("created"),

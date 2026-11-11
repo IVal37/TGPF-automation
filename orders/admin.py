@@ -2,7 +2,6 @@ from django.contrib import admin
 
 from orders.models import City, CustomerFlag, SpecialAddress, TravelTime
 
-
 # Business config: change it here, no deploy needed.
 
 @admin.register(City)

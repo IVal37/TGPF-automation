@@ -13,6 +13,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from orders.services.scrapers.browser import BLOCK, browser_session, click, click_at_commit, fill
 from orders.services.scrapers.errors import at_commit, before_commit
 
+
 # The commit point is the click on "send" (message-input-send). Everything before
 # it raises BeforeCommitError, so the task retries safely; a failure at or after
 # it propagates as-is and is never retried automatically (the text may be out).

@@ -1,7 +1,7 @@
 """The Restock tab: completed delivery orders the dispatcher ticks off, and the running list of what to restock."""
 from __future__ import annotations
 
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable
 
 from django.db.models import QuerySet, Sum
 

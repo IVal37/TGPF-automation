@@ -10,7 +10,8 @@ ignore = [
     "B904",    # `raise ... from None` is used where the cause would only be noise
     "SIM105",  # an explicit try/except/pass reads clearer in the scrapers
     "SIM108",  # ternaries are not always clearer
-    "UP006", "UP007", "UP035",  # typing.List/Optional are fine on Python 3.8
+    "UP006", "UP007", "UP035", "UP045",  # typing.List/Optional are fine on Python 3.8
+    "SIM117",  # nested `with` blocks in tests mirror the setup order and read better
 ]
 
 [tool.ruff.lint.isort]

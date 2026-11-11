@@ -22,6 +22,7 @@ from orders.tasks import RETRYABLE_TASKS, failure_text
 from orders.tests.helpers import as_dispatcher
 
 WJ = "1111-2222-3333333-9001"
+_BOOM = ValueError("boom")
 BASE = datetime(2026, 7, 20, 14, 0, 0)
 
 
@@ -503,7 +504,7 @@ class TestFailureArtifacts(SimpleTestCase):
         driver.page_source = "<html>page</html>"
         return driver
 
-    def _session(self, driver, label="send_message", ref="9001", fail_with=ValueError("boom")):
+    def _session(self, driver, label="send_message", ref="9001", fail_with=_BOOM):  # pass fail_with=None for a session that does not fail
         from orders.services.scrapers import browser
         with patch.object(browser, "create_driver", return_value=(driver, MagicMock())), \
              patch.object(browser, "_now", return_value=datetime(2026, 7, 20, 14, 0, 0)):

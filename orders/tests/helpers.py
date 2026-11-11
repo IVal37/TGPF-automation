@@ -1,10 +1,13 @@
 """Shared test fixtures: a sample WebJoint webhook and base classes."""
 from datetime import datetime
 from unittest.mock import patch
+
 from django.contrib.auth.models import User
 from django.test import TestCase
+
 from orders.models import Driver
 from orders.services.engine import add_driver, add_order
+
 
 def as_dispatcher(request):
     """The dashboard views are @login_required; give a RequestFactory request a

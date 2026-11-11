@@ -11,14 +11,14 @@ from django.utils import timezone
 from orders.constants import PaymentType
 from orders.models import Order, OrderItem, OrderStatus
 from orders.services.customers import customer_label
-from orders.services.pricing import adjusted_total, effective_total, round_money
 from orders.services.note import get_order_notes
 from orders.services.notices import add_notice
-from orders.services.telegram import send_telegram_message
+from orders.services.pricing import adjusted_total, effective_total, round_money
 from orders.services.scrapers.errors import BeforeCommitError, describe, failed_step
 from orders.services.scrapers.talkroute import send_message
 from orders.services.scrapers.webjoint import create_product, dispatch_to_driver, fill_order_notes, pull_from_chiles
 from orders.services.scrapers.weedmaps import get_wm_payment_type
+from orders.services.telegram import send_telegram_message
 
 logger = logging.getLogger(__name__)
 

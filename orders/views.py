@@ -3,6 +3,9 @@ import json
 import logging
 from typing import Optional
 
+# imports from project
+from django.conf import settings
+
 # imports from django
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -11,16 +14,19 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
-# imports from project
-from django.conf import settings
 from orders import tasks
 from orders.constants import HOME_CITY
-from orders.models import Driver, Notice, Order
+from orders.models import Driver, Notice
 from orders.services import dashboard, dispatch_queue, intake, queries, restock
 from orders.services.config import cities
 from orders.services.dispatch_queue import ActionRejected, NotFound
 from orders.services.engine import (
-    add_driver, add_shell_order, cancel_order, complete_order, delete_driver, remove_driver,
+    add_driver,
+    add_shell_order,
+    cancel_order,
+    complete_order,
+    delete_driver,
+    remove_driver,
 )
 from orders.services.invoice import InvoiceRejected, check_upload, extract_products_from_invoice
 from orders.services.webhook_payload import InvalidPayload

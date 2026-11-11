@@ -5,25 +5,32 @@ import inspect
 import logging
 import re
 import time
-from typing import Dict, Optional, Tuple, List
-
-logger = logging.getLogger(__name__)
+from typing import Dict, List, Optional, Tuple
 
 # imports from django
 from django.conf import settings
+from selenium.common.exceptions import TimeoutException, WebDriverException
 
 # imports from selenium
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
 
 # imports from project
 from orders.services.scrapers.browser import (
-    BLOCK, browser_session, ci_contains, click, click_at_commit, click_with_js_fallback, fill, scroll_into_view,
+    BLOCK,
+    browser_session,
+    ci_contains,
+    click,
+    click_at_commit,
+    click_with_js_fallback,
+    fill,
+    scroll_into_view,
 )
 from orders.services.scrapers.errors import BeforeCommitError, at_commit, before_commit, fail
 from orders.webhooks import redact_webhook_key, webhook_urls
+
+logger = logging.getLogger(__name__)
 
 _WEBJOINT_URL = "https://order.thegoodpeoplefarms.com/admin/index.html#/"
 

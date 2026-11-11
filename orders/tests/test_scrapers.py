@@ -27,8 +27,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
 from orders.services.scrapers import browser, merchant_pay, talkroute, webjoint, weedmaps
-from orders.services.scrapers.errors import BeforeCommitError
 from orders.services.scrapers.browser import ci_contains
+from orders.services.scrapers.errors import BeforeCommitError
 
 TRACE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "scraper_traces"
 
@@ -325,7 +325,9 @@ class ScraperTraceTests(SimpleTestCase):
     def test_pull_from_chiles_available(self):
         rows = '//tbody/tr'
         dialog = '//div[@role="dialog"]'
-        qty = lambda i: f"packagequantities[{i}].nfrompackagequantity"
+        def qty(i):
+            return f"packagequantities[{i}].nfrompackagequantity"
+
         dom = {
             **order_page(),
             (By.XPATH, rows): [

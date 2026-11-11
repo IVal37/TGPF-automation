@@ -1,6 +1,5 @@
 # imports from std lib
 import logging
-import os
 import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -12,9 +11,9 @@ from django.conf import settings
 # imports from selenium
 from selenium import webdriver
 from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, WebDriverException
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.support.ui import WebDriverWait
 
 # imports from project
 from orders.services.scrapers.errors import BeforeCommitError, failed_step

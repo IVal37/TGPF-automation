@@ -1,5 +1,5 @@
-from decimal import Decimal
 from datetime import datetime
+from decimal import Decimal
 
 from django.test import SimpleTestCase, TestCase
 

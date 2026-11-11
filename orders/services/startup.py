@@ -2,6 +2,7 @@
 from orders.constants import HOME_CITY
 from orders.services import queries
 
+
 # A driver's current city is where they last said they were. A city set today is
 # still true after a restart, so it is kept; one from an earlier day is stale
 # (the driver starts a new day in Davis), as is one that was never set.

@@ -15,4 +15,5 @@ DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memor
 
 # failure screenshots from tests go to a temp folder, never into logs/
 import tempfile  # noqa: E402
+
 FAILURE_DIR = os.path.join(tempfile.gettempdir(), "tgpf-test-failures")

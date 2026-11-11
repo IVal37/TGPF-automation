@@ -1,5 +1,5 @@
-from decimal import Decimal
 from datetime import datetime
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.conf import settings
@@ -169,6 +169,7 @@ class TestBrowserQueueSettings(SimpleTestCase):
     def test_no_task_is_left_unrouted_by_accident(self):
         # a new task in orders/tasks.py must be listed in BROWSER_TASKS or be a restock digest
         from celery.app.task import Task
+
         from orders import tasks
         names = {n for n, obj in vars(tasks).items() if isinstance(obj, Task)}
         self.assertEqual(names, set(settings.BROWSER_TASKS) | {

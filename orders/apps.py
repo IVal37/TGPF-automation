@@ -33,6 +33,7 @@ class OrdersConfig(AppConfig):
     # addresses, never an order or a customer (the exception is also in CLAUDE.md).
     def _start_tunnel_and_register_webhooks(self):
         import logging
+
         from orders.services.notices import add_notice
         logger = logging.getLogger(__name__)
         try:

@@ -1,5 +1,5 @@
-from decimal import Decimal
 from datetime import datetime, timedelta
+from decimal import Decimal
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
@@ -112,7 +112,8 @@ class TestUnassignedQueue(DbTruthCase):
 
     def test_unassigned_cards_come_first_and_an_assigned_card_is_normal(self):
         self._driver("Dee")
-        self._add("assigned", "Davis"); get_eta("assigned")
+        self._add("assigned", "Davis")
+        get_eta("assigned")
         Order.objects.filter(order_id="assigned").update(customer_name="Assigned Cust")
         Order.objects.create(order_id="loose", customer_name="Loose Cust", city="Davis", order_date=self.BASE)
         html = self._html()
@@ -202,7 +203,8 @@ class TestStartupPanel(DbTruthCase):
 
     def test_out_for_delivery_lists_each_drivers_sent_orders_with_mark_delivered(self):
         d1, d2 = self._driver("Dee"), self._driver("Eve")
-        self._add("sent1", "Davis"); self._add("queued1", "Davis")
+        self._add("sent1", "Davis")
+        self._add("queued1", "Davis")
         Order.objects.filter(order_id="sent1").update(
             status=Order.Status.SENT, driver=d1, customer_name="Out Cust")
         Order.objects.filter(order_id="queued1").update(driver=d2, customer_name="Queued Cust")
@@ -215,7 +217,7 @@ class TestStartupPanel(DbTruthCase):
 
     def test_mark_delivered_completes_the_order(self):
         from orders.views import complete_order_manual
-        driver = self._driver("Dee")
+        self._driver("Dee")
         self._add("sent1", "Davis")
         Order.objects.filter(order_id="sent1").update(status=Order.Status.SENT)
         complete_order_manual(as_dispatcher(RequestFactory().post("/x", {"order_id": "sent1"})))
@@ -237,7 +239,7 @@ class TestRestockTab(DbTruthCase):
         return view(as_dispatcher(RequestFactory().post("/x", data)))
 
     def test_full_restock_flow(self):
-        from orders.views import reconcile_restock, clear_restock
+        from orders.views import clear_restock, reconcile_restock
         self._driver("D1")
         self._completed("a", [("Gummy", 2), ("Preroll", 1)])
         self._completed("b", [("Gummy", 3)])
@@ -259,7 +261,7 @@ class TestRestockTab(DbTruthCase):
         self.assertTrue(Order.objects.get(order_id="a").restock_cleared)
 
     def test_cleared_orders_are_not_counted_again(self):
-        from orders.views import reconcile_restock, clear_restock
+        from orders.views import clear_restock, reconcile_restock
         self._driver("D1")
         self._completed("a", [("Gummy", 2)])
         self._post(reconcile_restock, order_ids=["a"])
@@ -272,9 +274,11 @@ class TestRestockTab(DbTruthCase):
         from orders.services.engine import add_shell_order, add_storefront_order, cancel_order
         self._driver("D1")
         self._completed("done", [("Gummy", 1)])
-        self._add("cancelled", "Davis"); cancel_order("cancelled")
+        self._add("cancelled", "Davis")
+        cancel_order("cancelled")
         self._add("open", "Davis")
-        add_shell_order("Davis"); complete_order("noop", city="Davis")  # closes the shell
+        add_shell_order("Davis")
+        complete_order("noop", city="Davis")  # closes the shell
         add_storefront_order(order_id="store", customer_name="Walk In", order_time=self.BASE)
         self.assertEqual([o.order_id for o in restock.restock_context()["completed_orders"]], ["done"])
 

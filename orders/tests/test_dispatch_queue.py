@@ -1,6 +1,6 @@
-from decimal import Decimal
 from datetime import datetime
-from unittest.mock import patch, ANY
+from decimal import Decimal
+from unittest.mock import ANY, patch
 
 from django.http import Http404
 from django.test import RequestFactory, TestCase, override_settings

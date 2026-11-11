@@ -1,6 +1,7 @@
 # imports from std lib
 from datetime import datetime, timedelta
 
+
 # converts a WebJoint webhook ISO timestamp (UTC, "Z"-suffixed) to the naive
 # local wall-clock time used everywhere else (USE_TZ=False, hours.py, etc.)
 def parse_webhook_time(iso_str: str) -> datetime:
@@ -14,7 +15,7 @@ def parse_webhook_time(iso_str: str) -> datetime:
 # @returns:
 #   rounded_time - time rounded to next interval
 def round_time(dt, minutes=15, *, strict=False):
-    sec_since_hour = minutes * 60 
+    sec_since_hour = minutes * 60
     sec_time = dt.minute * 60 + dt.second + dt.microsecond / 1_000_000
     add = (sec_since_hour - (sec_time % sec_since_hour)) % sec_since_hour
     if strict and add == 0:
@@ -23,7 +24,7 @@ def round_time(dt, minutes=15, *, strict=False):
     return rounded_time
 
 # formats datetime for readability
-# @params: 
+# @params:
 #   dt - datetime object to be formatted
 # @returns:
 #   dt_str - datetime as string

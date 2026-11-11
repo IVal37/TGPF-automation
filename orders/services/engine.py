@@ -1,16 +1,16 @@
 # imports from std lib
+import logging
+import uuid
 from datetime import datetime
 from decimal import Decimal
-import logging
 from typing import Optional
-import uuid
 
 # imports from third party
 from django.utils import timezone
 
 # imports from project
 from orders.constants import STOREFRONT_CITY
-from orders.models import Order, OrderItem, Driver, OrderStatus, QUEUE_STATUSES
+from orders.models import QUEUE_STATUSES, Driver, Order, OrderItem, OrderStatus
 from orders.services import queries
 from orders.services.eta import estimate_window
 from orders.services.travel import get_travel_time

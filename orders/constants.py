@@ -50,10 +50,10 @@ DIRECT_SOURCES = ("POS", "Website")
 FSA_FSM_NAMES = {"frank sinatra adult", "frank sinatra medical"}
 
 VALEDICTIONS = [
-                    'Thanks again for your order!', 
-                    'We appreciate your business!', 
-                    'Have a great day!', 
-                    'We hope you enjoy your order!', 
+                    'Thanks again for your order!',
+                    'We appreciate your business!',
+                    'Have a great day!',
+                    'We hope you enjoy your order!',
                     'Thanks for choosing TGPF!',
                     'Thanks!',
                     'Enjoy!',

@@ -13,7 +13,6 @@ from django.core.management.base import BaseCommand
 # imports from project
 from orders.services.scrapers.webjoint import set_webhooks
 
-
 NGROK_API_TIMEOUT = 10  # seconds
 # ngrok needs a few seconds before its API lists the new tunnel
 TUNNEL_STARTUP_SECONDS = 5

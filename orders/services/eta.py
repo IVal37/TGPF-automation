@@ -2,15 +2,22 @@
 from datetime import datetime, timedelta
 from typing import DefaultDict, List
 
+from orders.constants import (
+    BUSY_ORDER_COUNT,
+    BUSY_WINDOW_MINUTES,
+    DELIVERY_MINUTES,
+    MAX_LEAD_MINUTES,
+    MIN_LEAD_MINUTES,
+    WINDOW_MINUTES,
+)
+
 # imports from project
 from orders.models import Driver, Order
 from orders.services import queries
-from orders.services.time import round_time, format_time
 from orders.services.hours import clamp_to_opening
-from orders.constants import (
-    BUSY_ORDER_COUNT, BUSY_WINDOW_MINUTES, DELIVERY_MINUTES, MAX_LEAD_MINUTES, MIN_LEAD_MINUTES, WINDOW_MINUTES,
-)
+from orders.services.time import format_time, round_time
 from orders.services.travel import get_travel_time
+
 
 # a customer who picked a delivery window gets that window when it is no earlier
 # than the system's own estimate. Saves it on the order; returns whether it applied.
