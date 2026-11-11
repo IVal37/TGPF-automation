@@ -17,7 +17,7 @@
         <div class="dispatch-suggested">
           {% if item.sending %}Sending the dispatch text&hellip;{% else %}Sent{% endif %}
           {% if item.sending and not item.order.last_error %}
-            <form method="post" action="/dismiss_error" class="dispatch-inline-form">
+            <form method="post" action="{% url 'dismiss_error_view' %}" class="dispatch-inline-form">
               {% csrf_token %}
               <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
               <button class="btn-clear" type="submit" title="Use this if the text went out but this card never updated">Mark as sent</button>
@@ -30,13 +30,13 @@
         <div class="dispatch-error">
           <div class="dispatch-error-text">{{ item.order.last_error }}</div>
           <div class="dispatch-error-actions">
-            <form method="post" action="/retry_task" class="dispatch-inline-form"
+            <form method="post" action="{% url 'retry_task_view' %}" class="dispatch-inline-form"
                   {% if item.order.last_error_after_commit %}onsubmit="return confirm('This failed after the point of no return, so it may already have gone through (the text may have been sent, the note saved). Check first. Retry anyway?');"{% endif %}>
               {% csrf_token %}
               <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
               <button class="btn-action" type="submit">Retry</button>
             </form>
-            <form method="post" action="/dismiss_error" class="dispatch-inline-form">
+            <form method="post" action="{% url 'dismiss_error_view' %}" class="dispatch-inline-form">
               {% csrf_token %}
               <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
               <button class="btn-clear" type="submit">Dismiss</button>
@@ -51,7 +51,7 @@
       {% if item.linked_companion %}
         <div class="dispatch-linked">
           <span>+ linked: {{ item.linked_companion.customer_name }} ({{ item.linked_companion.order_id }})</span>
-          <form method="post" action="/unlink_order" class="dispatch-inline-form">
+          <form method="post" action="{% url 'unlink_order_view' %}" class="dispatch-inline-form">
             {% csrf_token %}
             <input type="hidden" name="order_id" value="{{ item.linked_companion.order_id }}">
             <button class="btn-unlink" type="submit">Unlink</button>
@@ -61,7 +61,7 @@
 
       {% if item.unassigned %}
         {% if active_drivers %}
-          <form method="post" action="/assign_driver" class="dispatch-form">
+          <form method="post" action="{% url 'assign_driver_view' %}" class="dispatch-form">
             {% csrf_token %}
             <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
             <div class="dispatch-field">
@@ -78,7 +78,7 @@
           <div class="dispatch-suggested">Switch a driver on to assign this order.</div>
         {% endif %}
       {% elif item.in_queue %}
-      <form method="post" action="/send_dispatch_msg" class="dispatch-form">
+      <form method="post" action="{% url 'send_dispatch_msg_view' %}" class="dispatch-form">
         {% csrf_token %}
         <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
         <div class="dispatch-field">
@@ -96,7 +96,7 @@
       </form>
 
       {% if item.past_closing %}
-        <form method="post" action="/send_reschedule_msg" class="dispatch-actions">
+        <form method="post" action="{% url 'send_reschedule_msg_view' %}" class="dispatch-actions">
           {% csrf_token %}
           <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
           <button class="btn-reschedule" type="submit">Send Reschedule Instead</button>
@@ -105,7 +105,7 @@
       {% endif %}
 
       {% if item.in_queue and item.is_fsa_fsm and item.link_targets %}
-        <form method="post" action="/link_order" class="dispatch-actions">
+        <form method="post" action="{% url 'link_order_view' %}" class="dispatch-actions">
           {% csrf_token %}
           <input type="hidden" name="order_id" value="{{ item.order.order_id }}">
           <select name="primary_order_id">

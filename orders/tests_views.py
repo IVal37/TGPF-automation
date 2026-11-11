@@ -275,3 +275,24 @@ class TestScheduledWindowAtIntake(TestCase):
         order, wanted_start = self._place(timedelta(minutes=1), timedelta(minutes=10))
         self.assertNotEqual(order.eta_start, wanted_start)
         self.assertIsNotNone(order.eta_start)
+
+
+class TestDashboardAssets(DashboardCase):
+    def test_the_page_links_its_stylesheet_and_script(self):
+        page = self.client.get("/").content.decode()
+        self.assertIn('href="/static/orders/dashboard.css"', page)
+        self.assertIn('src="/static/orders/dashboard.js"', page)
+        self.assertNotIn("<style>", page)
+
+    def test_the_static_files_exist(self):
+        from django.contrib.staticfiles import finders
+        for name in ("orders/dashboard.css", "orders/dashboard.js"):
+            self.assertIsNotNone(finders.find(name), name)
+
+    def test_the_script_is_told_where_to_poll(self):
+        page = self.client.get("/").content.decode()
+        for attribute, path in (
+            ("data-pending-url", "/pending_orders_partial"), ("data-restock-url", "/restock_partial"),
+            ("data-login-url", "/accounts/login/"),
+        ):
+            self.assertIn(f'{attribute}="{path}"', page)

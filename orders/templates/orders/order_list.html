@@ -1,412 +1,12 @@
-<!DOCTYPE html>
+{% load static %}<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TGPF Dispatch</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #f5f5f5;
-      color: #222;
-      padding: 2rem;
-    }
-
-    h1 {
-      font-size: 1.5rem;
-      font-weight: 600;
-      margin-bottom: 1.5rem;
-      color: #417505;
-    }
-
-    .section-title {
-      font-size: 1rem;
-      font-weight: 600;
-      color: #417505;
-      margin-bottom: 0.75rem;
-      margin-top: 2rem;
-    }
-
-    .empty {
-      color: #888;
-      font-size: 0.95rem;
-    }
-
-    .order-row {
-      display: flex;
-      align-items: center;
-      gap: 0.65rem;
-      font-size: 0.95rem;
-      padding: 0.45rem 0;
-      border-bottom: 1px solid #ececec;
-      max-width: 480px;
-    }
-
-    .order-row:last-of-type {
-      border-bottom: none;
-    }
-
-    .order-row input[type="checkbox"] {
-      width: 1rem;
-      height: 1rem;
-      cursor: pointer;
-      accent-color: #417505;
-    }
-
-    .btn-restock {
-      margin-top: 1.25rem;
-      background: #417505;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 0.5rem 1.3rem;
-      font-size: 0.9rem;
-      cursor: pointer;
-    }
-
-    .btn-restock:hover { background: #345f04; }
-
-    .restock-list {
-      list-style: none;
-      max-width: 480px;
-      background: #fff;
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      padding: 0.6rem 1.1rem;
-    }
-
-    .restock-list li {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.92rem;
-      padding: 0.35rem 0;
-      border-bottom: 1px solid #f0f0f0;
-    }
-
-    .restock-list li:last-child { border-bottom: none; }
-
-    .restock-name { color: #222; }
-    .restock-qty  { color: #555; font-weight: 600; }
-
-    .btn-clear {
-      margin-top: 1rem;
-      background: none;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      padding: 0.4rem 1rem;
-      font-size: 0.85rem;
-      color: #555;
-      cursor: pointer;
-    }
-
-    .btn-clear:hover { border-color: #c0392b; color: #c0392b; }
-
-    .startup-grid {
-      display: flex;
-      gap: 2rem;
-      flex-wrap: wrap;
-      max-width: 700px;
-      margin-top: 0.5rem;
-    }
-
-    .startup-form {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-      flex-wrap: wrap;
-    }
-
-    .startup-form select {
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      padding: 0.4rem 0.6rem;
-      font-size: 0.9rem;
-      background: #fff;
-    }
-
-    .btn-action {
-      background: #417505;
-      color: #fff;
-      border: none;
-      border-radius: 6px;
-      padding: 0.4rem 1rem;
-      font-size: 0.9rem;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-
-    .btn-action:hover { background: #345f04; }
-
-    /* ── tabs ─────────────────────────────────────────────────────────── */
-
-    .tab-nav {
-      display: flex;
-      gap: 0.25rem;
-      border-bottom: 2px solid #e0e0e0;
-      margin-top: 1.5rem;
-      max-width: 900px;
-    }
-
-    .tab-btn {
-      background: none;
-      border: none;
-      padding: 0.6rem 1.1rem;
-      font-size: 0.9rem;
-      font-weight: 600;
-      color: #666;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -2px;
-    }
-
-    .tab-btn:hover { color: #417505; }
-
-    .tab-btn.active {
-      color: #417505;
-      border-bottom-color: #417505;
-    }
-
-    .tab-badge {
-      display: inline-block;
-      background: #c0392b;
-      color: #fff;
-      font-size: 0.7rem;
-      font-weight: 700;
-      border-radius: 999px;
-      padding: 0.05rem 0.45rem;
-      margin-left: 0.35rem;
-    }
-
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
-
-    /* ── dispatch queue ───────────────────────────────────────────────── */
-
-    .dispatch-card {
-      background: #fff;
-      border: 1px solid #e0e0e0;
-      border-left: 4px solid #417505;
-      border-radius: 8px;
-      padding: 0.9rem 1.1rem;
-      margin-bottom: 0.85rem;
-      max-width: 560px;
-    }
-
-    .dispatch-card.past-closing { border-left-color: #c0392b; }
-
-    .dispatch-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin-bottom: 0.5rem;
-    }
-
-    .dispatch-name {
-      font-size: 1rem;
-      font-weight: 600;
-      color: #222;
-    }
-
-    .dispatch-city {
-      font-size: 0.85rem;
-      color: #666;
-    }
-
-    .dispatch-suggested {
-      font-size: 0.82rem;
-      color: #888;
-      margin-bottom: 0.5rem;
-    }
-
-    .dispatch-payment {
-      font-size: 0.82rem;
-      color: #888;
-      margin-bottom: 0.5rem;
-    }
-
-    .dispatch-form .btn-action:disabled {
-      background: #bbb;
-      cursor: not-allowed;
-    }
-
-    .past-closing-flag {
-      display: inline-block;
-      font-size: 0.72rem;
-      font-weight: 700;
-      color: #c0392b;
-      border: 1px solid #c0392b;
-      border-radius: 4px;
-      padding: 0.05rem 0.4rem;
-      margin-left: 0.5rem;
-      vertical-align: middle;
-    }
-
-    .dispatch-error {
-      margin: 0.5rem 0;
-      padding: 0.5rem 0.7rem;
-      border: 1px solid #c0392b;
-      border-radius: 6px;
-      background: #fdf0ee;
-      color: #c0392b;
-      font-size: 0.85rem;
-    }
-
-    .dispatch-error-actions { display: flex; gap: 0.5rem; margin-top: 0.4rem; }
-
-    .dispatch-error-actions form { margin: 0; }
-
-    .notice {
-      max-width: 700px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.75rem;
-      margin: 0.4rem 0;
-      padding: 0.5rem 0.7rem;
-      border-radius: 6px;
-      background: #eef6e6;
-      border: 1px solid #417505;
-      font-size: 0.88rem;
-    }
-
-    .notice.error { background: #fdf0ee; border-color: #c0392b; color: #c0392b; }
-
-    .notice form { margin: 0; }
-
-    .unassigned-flag { color: #b7791f; border-color: #b7791f; }
-
-    .dispatch-card.unassigned { border-left: 4px solid #b7791f; }
-
-    .dispatch-field select {
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      padding: 0.4rem 0.6rem;
-      font-size: 0.9rem;
-      background: #fff;
-    }
-
-    .driver-panel { width: 100%; max-width: 700px; margin-top: 0.75rem; }
-
-    .driver-row { border-top: 1px solid #eee; padding: 0.5rem 0; }
-
-    .driver-row-head {
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      flex-wrap: wrap;
-    }
-
-    .driver-name { font-weight: 600; }
-
-    .driver-meta { font-size: 0.82rem; color: #888; }
-
-    .driver-off .driver-name { color: #999; }
-
-    .driver-row-head form { display: inline; margin: 0; }
-
-    .delivery-list { margin: 0.4rem 0 0 1rem; font-size: 0.88rem; }
-
-    .delivery-item { display: flex; align-items: center; gap: 0.6rem; padding: 0.15rem 0; }
-
-    .delivery-item form { display: inline; margin: 0; }
-
-    .dispatch-form {
-      display: flex;
-      align-items: flex-end;
-      gap: 0.75rem;
-      flex-wrap: wrap;
-    }
-
-    .dispatch-field {
-      display: flex;
-      flex-direction: column;
-      gap: 0.2rem;
-    }
-
-    .dispatch-field label {
-      font-size: 0.75rem;
-      color: #666;
-    }
-
-    .dispatch-field input[type="time"] {
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      padding: 0.35rem 0.5rem;
-      font-size: 0.9rem;
-    }
-
-    .dispatch-actions {
-      margin-top: 0.6rem;
-      display: flex;
-      align-items: center;
-      gap: 0.6rem;
-      flex-wrap: wrap;
-    }
-
-    .dispatch-actions select {
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      padding: 0.35rem 0.5rem;
-      font-size: 0.85rem;
-      background: #fff;
-    }
-
-    .btn-reschedule {
-      background: #fff;
-      color: #c0392b;
-      border: 1px solid #c0392b;
-      border-radius: 6px;
-      padding: 0.4rem 1rem;
-      font-size: 0.85rem;
-      cursor: pointer;
-    }
-
-    .btn-reschedule:hover { background: #fdf1f0; }
-
-    .btn-link {
-      background: #fff;
-      color: #2969b0;
-      border: 1px solid #2969b0;
-      border-radius: 6px;
-      padding: 0.4rem 1rem;
-      font-size: 0.85rem;
-      cursor: pointer;
-      white-space: nowrap;
-    }
-
-    .btn-link:hover { background: #eef4fb; }
-
-    .dispatch-linked {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 0.6rem;
-      font-size: 0.82rem;
-      color: #2969b0;
-      background: #eef4fb;
-      border-radius: 6px;
-      padding: 0.4rem 0.6rem;
-      margin-bottom: 0.5rem;
-    }
-
-    .dispatch-inline-form { display: inline; }
-
-    .btn-unlink {
-      background: none;
-      border: 1px solid #ccc;
-      border-radius: 6px;
-      padding: 0.2rem 0.6rem;
-      font-size: 0.78rem;
-      color: #555;
-      cursor: pointer;
-    }
-
-    .btn-unlink:hover { border-color: #c0392b; color: #c0392b; }
-  </style>
+  <link rel="stylesheet" href="{% static 'orders/dashboard.css' %}">
 </head>
-<body>
+<body data-login-url="{% url 'login' %}" data-pending-url="{% url 'pending_orders_partial' %}" data-restock-url="{% url 'restock_partial' %}">
 
   <div style="display: flex; align-items: baseline; justify-content: space-between; max-width: 700px;">
     <h1>TGPF Dispatch</h1>
@@ -419,7 +19,7 @@
   {% for notice in notices %}
     <div class="notice{% if notice.level == 'error' %} error{% endif %}">
       <span>{{ notice.message }}</span>
-      <form method="post" action="/dismiss_notice">
+      <form method="post" action="{% url 'dismiss_notice_view' %}">
         {% csrf_token %}
         <input type="hidden" name="notice_id" value="{{ notice.pk }}">
         <button class="btn-clear" type="submit">Dismiss</button>
@@ -437,7 +37,7 @@
 
     <div>
       <div style="font-size:0.85rem; color:#555; margin-bottom:0.4rem;">Add existing order (city only)</div>
-      <form method="post" action="/add_shell_order" class="startup-form">
+      <form method="post" action="{% url 'add_shell_order_view' %}" class="startup-form">
         {% csrf_token %}
         <select name="city">
           {% for city in cities %}
@@ -451,7 +51,7 @@
     {% if active_drivers %}
     <div>
       <div style="font-size:0.85rem; color:#555; margin-bottom:0.4rem;">Set driver location</div>
-      <form method="post" action="/set_driver_location" class="startup-form">
+      <form method="post" action="{% url 'set_driver_location_view' %}" class="startup-form">
         {% csrf_token %}
         <select name="driver_id">
           {% for driver in active_drivers %}
@@ -473,7 +73,7 @@
   <div class="startup-grid">
     <div>
       <div style="font-size:0.85rem; color:#555; margin-bottom:0.4rem;">Add driver</div>
-      <form method="post" action="/add_driver" class="startup-form">
+      <form method="post" action="{% url 'add_driver_view' %}" class="startup-form">
         {% csrf_token %}
         <input type="text" name="name" placeholder="Driver name" maxlength="255" required
                style="border:1px solid #ccc; border-radius:6px; padding:0.4rem 0.6rem; font-size:0.9rem;">
@@ -490,12 +90,12 @@
           <span class="driver-meta">
             {% if entry.driver.is_active %}on shift{% if entry.driver.current_city %} &middot; {{ entry.driver.current_city }}{% endif %}{% else %}off shift{% endif %}
           </span>
-          <form method="post" action="/toggle_driver">
+          <form method="post" action="{% url 'toggle_driver_view' %}">
             {% csrf_token %}
             <input type="hidden" name="driver_id" value="{{ entry.driver.pk }}">
             <button class="btn-clear" type="submit">{% if entry.driver.is_active %}Switch off{% else %}Switch on{% endif %}</button>
           </form>
-          <form method="post" action="/delete_driver"
+          <form method="post" action="{% url 'delete_driver_view' %}"
                 onsubmit="return confirm('Delete {{ entry.driver.name|escapejs }}? Their open orders go back to Unassigned. This cannot be undone.');">
             {% csrf_token %}
             <input type="hidden" name="driver_id" value="{{ entry.driver.pk }}">
@@ -507,7 +107,7 @@
             {% for order in entry.out_for_delivery %}
               <div class="delivery-item">
                 <span>{{ order.customer_name }} &mdash; {{ order.city }}</span>
-                <form method="post" action="/complete_order_manual">
+                <form method="post" action="{% url 'complete_order_manual' %}">
                   {% csrf_token %}
                   <input type="hidden" name="order_id" value="{{ order.order_id }}">
                   <button class="btn-action" type="submit">Mark delivered</button>
@@ -540,7 +140,7 @@
 
     <div style="display:flex; align-items:baseline; justify-content:space-between; max-width:560px;">
       <p class="section-title" style="margin-top: 0;">Orders Awaiting Approval</p>
-      <form method="post" action="/clear_dispatch_queue"
+      <form method="post" action="{% url 'clear_dispatch_queue_view' %}"
             onsubmit="return confirm('Dismiss every order in the queue without texting anyone? This cannot be undone.');">
         {% csrf_token %}
         <button class="btn-clear" type="submit" style="margin-top: 0;">Clear Queue</button>
@@ -564,7 +164,7 @@
   <div id="tab-inventory" class="tab-panel">
 
     <p class="section-title" style="margin-top: 0;">Add Products From Invoice</p>
-    <form method="post" action="/add_products_from_invoice" enctype="multipart/form-data" class="startup-form">
+    <form method="post" action="{% url 'add_products_from_invoice' %}" enctype="multipart/form-data" class="startup-form">
       {% csrf_token %}
       <input type="file" name="invoice" accept="image/*,.pdf" required>
       <button class="btn-action" type="submit">Upload</button>
@@ -572,67 +172,7 @@
 
   </div>
 
-  <script>
-    document.querySelectorAll('.tab-btn').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.remove('active'); });
-        document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.remove('active'); });
-        btn.classList.add('active');
-        document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
-      });
-    });
-
-    // Polls `url` every 15s and swaps the response HTML into `containerId`,
-    // updating the matching tab badge to a live count of `itemSelector`
-    // elements. Only that tab's content is touched — the rest of the page
-    // (and whichever tab you're actually looking at) is left alone.
-    // `shouldSkip(container)` lets a caller pause refreshes while the
-    // dispatcher has unsaved input inside the container (an in-progress
-    // edit, a checkbox selection not yet submitted) so a refresh never
-    // silently discards something they were in the middle of doing.
-    function autoRefresh(url, containerId, badgeId, itemSelector, shouldSkip) {
-      var container = document.getElementById(containerId);
-      var badge = document.getElementById(badgeId);
-      var REFRESH_MS = 15000;
-
-      function refresh() {
-        if (shouldSkip(container)) return;
-
-        fetch(url)
-          .then(function (res) {
-            // session expired: fetch followed a redirect to the login page, so
-            // reload the whole page (which lands on the login form) instead of
-            // pasting a login form into the tab
-            if (res.redirected && res.url.indexOf('{% url "login" %}') !== -1) {
-              window.location.reload();
-              return null;
-            }
-            return res.text();
-          })
-          .then(function (html) {
-            if (html === null) return;
-            container.innerHTML = html;
-            var count = container.querySelectorAll(itemSelector).length;
-            badge.textContent = count;
-            badge.style.display = count > 0 ? '' : 'none';
-          })
-          .catch(function () { /* network hiccup — just try again next interval */ });
-      }
-
-      setInterval(refresh, REFRESH_MS);
-    }
-
-    // Dispatch Queue: don't clobber a time field the dispatcher is actively editing
-    autoRefresh('/pending_orders_partial', 'dispatch-list', 'dispatch-badge', '.dispatch-card', function (container) {
-      return container.contains(document.activeElement);
-    });
-
-    // Restock: don't wipe out checkboxes the dispatcher has already ticked
-    // but not yet submitted via "Restock Time"
-    autoRefresh('/restock_partial', 'restock-list', 'restock-badge', '.order-row', function (container) {
-      return container.contains(document.activeElement) || container.querySelector('input[type="checkbox"]:checked');
-    });
-  </script>
+  <script src="{% static 'orders/dashboard.js' %}"></script>
 
 </body>
 </html>
