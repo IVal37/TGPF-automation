@@ -31,8 +31,3 @@ def send_telegram_message(text: str) -> None:
         detail = getattr(e.response, "text", "") if getattr(e, "response", None) is not None else ""
         logger.error("send_telegram_message: failed to send: %s | response: %s", e, detail)
 
-
-if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
-    send_telegram_message("testing")

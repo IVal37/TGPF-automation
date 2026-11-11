@@ -99,7 +99,3 @@ def regularize_type(wm_type: str) -> str:
     else:
         return "Cash"
 
-if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
-    get_wm_payment_type(0)  # put a real Weedmaps order number here to try it

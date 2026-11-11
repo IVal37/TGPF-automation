@@ -45,7 +45,3 @@ def send_merchant_pay_link():
 
         time.sleep(5)
 
-if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
-    send_merchant_pay_link()

@@ -17,12 +17,6 @@ class Driver(models.Model):
     # reset to Davis, one set today is kept
     location_updated_at = models.DateTimeField(null=True, blank=True)
 
-    def get_id(self) -> int:
-        return self.pk
-
-    def get_current_city(self) -> str:
-        return self.current_city
-
     def set_current_city(self, city: str) -> None:
         self.current_city = city
         self.location_updated_at = timezone.now()
@@ -31,9 +25,6 @@ class Driver(models.Model):
     def add_order(self, order) -> None:
         order.driver = self
         order.save(update_fields=["driver"])
-
-    def get_active_orders(self):
-        return list(self.orders.all())
 
     def __str__(self):
         return self.name
@@ -116,15 +107,6 @@ class Order(models.Model):
         'self', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='linked_companions'
     )
-
-    def get_id(self):
-        return self.order_id
-
-    def get_city(self) -> str:
-        return self.city
-
-    def get_created_at(self) -> datetime:
-        return self.order_date
 
     def set_etas(self, start: datetime, end: datetime) -> None:
         self.eta_start = start

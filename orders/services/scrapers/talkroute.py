@@ -39,29 +39,6 @@ def send_message(customer_number: str, dispatch_msg: str, order_ref=None):
         except Exception:
             pass
 
-        # change number to working one
-        '''
-        try:
-            settings_button = wait.until(EC.element_to_be_clickable((By.ID, "show-preferences-button")))
-            settings_button.click()
-
-            call_dropdown = wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "MuiInputBase-root")))
-            call_dropdown.click()
-
-            call_num = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, f"li.MuiButtonBase-root.MuiListItem-root.MuiMenuItem-root.MuiMenuItem-gutters.MuiListItem-gutters.MuiListItem-button[data-value='{talkroute_phone}']")))
-            call_num.click()
-            
-            text_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="mui-component-select-OUTGOING_TEXT_PHONE_NUMBER_SELECTED"]')))
-            text_dropdown.click()
-
-            text_num = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="menu-OUTGOING_TEXT_PHONE_NUMBER_SELECTED"]/div[3]/ul/li[2]')))
-            text_num.click()
-
-            close_settings_button = wait.until(EC.element_to_be_clickable((By.ID, "close-preferences-button")))
-            close_settings_button.click()
-        except Exception:
-            pass
-        '''
         # send message
         send_locator = (By.CLASS_NAME, "message-input-send")
         with before_commit("compose message"):
@@ -75,16 +52,3 @@ def send_message(customer_number: str, dispatch_msg: str, order_ref=None):
             click_at_commit(wait, send_locator, send_button)
 
             time.sleep(5)
-
-def send_testing_message():
-    send_message(os.environ.get('TALKROUTE_TEST_PHONE', ''), "testing", order_ref="test")
-
-if __name__ == "__main__":
-    import sys
-    import django
-    from dotenv import load_dotenv
-    load_dotenv()
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "TGPFflows.settings")
-    django.setup()
-    send_testing_message()

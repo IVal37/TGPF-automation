@@ -7,7 +7,6 @@ from decimal import Decimal
 # and edit it in Django admin.
 
 _DELIVERY_TIME = 5
-_BUFFER_TIME = 10
 
 # card / tap-to-pay orders are charged a 3% fee on top of the total
 CARD_FEE_MULTIPLIER = Decimal("1.03")

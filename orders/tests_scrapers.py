@@ -424,14 +424,6 @@ class ScraperTraceTests(SimpleTestCase):
             lambda: webjoint.set_webhooks("https://example.ngrok.app"),
         )
 
-    def test_get_customer_info(self):
-        count_xpath = "/html/body/div[1]/div/div/main/div[2]/div/div/form/div[2]/span[3]/div/div/div/span/div/span[2]"
-        self.run_scenario(
-            "webjoint_get_customer_info",
-            webjoint.get_customer_info,
-            dom={(By.XPATH, count_xpath): [spec("Order count 7")]},
-        )
-
     # ── failures: before the commit point (retryable) vs at/after it ──────
     #
     # BeforeCommitError means nothing irreversible happened, so the task layer

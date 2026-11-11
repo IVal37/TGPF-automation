@@ -24,7 +24,7 @@ def get_eta(order_id: str):
     # extract info about order
     order: Order = Order.objects.get(order_id=order_id)
     driver_id = order.driver_id
-    driver_location: str = Driver.objects.get(pk=driver_id).get_current_city()
+    driver_location: str = Driver.objects.get(pk=driver_id).current_city
     driver_queue_by_city: DefaultDict[str, List[str]] = get_driver_city_queues(driver_id)
     # one lookup of every stop's city, shared by the route-time calculations below
     cities = {oid: city for city, oids in driver_queue_by_city.items() for oid in oids}
@@ -42,7 +42,7 @@ def get_eta(order_id: str):
         orders_in_order.extend(driver_queue_by_city[city])
 
     # core logic for time to order delivery
-    order_created_time: datetime = order.get_created_at()
+    order_created_time: datetime = order.order_date
     minutes_to_order = get_eta_minutes(driver_location, orders_in_order, order_id, cities)
     raw_eta: datetime = order_created_time + timedelta(minutes=minutes_to_order)
 
@@ -80,10 +80,8 @@ def get_eta_minutes(start_city: str, order_ids_list: List[str], search_id: str, 
         minutes_to_add: int = get_travel_time(curr_location, next_location) + _DELIVERY_TIME
         minutes += minutes_to_add
 
-        #buffer_time: int = 0 if len(order_ids_list) < 5 else _BUFFER_TIME
-        buffer_time: int = 0
         if order_id == search_id:
-            return minutes + buffer_time
+            return minutes
         # else
         curr_location: str = next_location
 

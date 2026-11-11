@@ -22,7 +22,6 @@ from orders.services.dispatch import (
     get_effective_total,
     is_fsa_fsm,
     CalculateForMinCheck,
-    populate_items,
 )
 from orders import views as orders_views
 from orders.models import Driver, Order
@@ -168,25 +167,6 @@ class TestGetAdjustedTotal(SimpleTestCase):
         result = get_adjusted_total(Decimal("100.00"), "Merchant Pay - ACH")
         expected = Decimal("100.00") + Decimal("100.00") * Decimal("0.0225") + Decimal("0.35")
         self.assertEqual(result, expected)
-
-
-# ── populate_items ────────────────────────────────────────────────────────────
-
-class TestPopulateItems(SimpleTestCase):
-    def test_formats_name_brand_quantity(self):
-        items, _ = populate_items(SAMPLE_ORDER["details"])
-        self.assertEqual(items[0], "Raspberry Parfait | All-In-One Rechargeable | BBrand (1)")
-        self.assertEqual(items[1], "Melon Fizz | All-In-One Rechargeable | BBrand (1)")
-
-    def test_sums_total_item_count(self):
-        _, count = populate_items(SAMPLE_ORDER["details"])
-        self.assertEqual(count, 2)
-
-    def test_multi_quantity_counted_correctly(self):
-        data = [{"quantity": 3, "variant": {"product": {"name": "X", "brand": {"name": "Y"}}}}]
-        items, count = populate_items(data)
-        self.assertEqual(count, 3)
-        self.assertIn("(3)", items[0])
 
 
 # ── under_min_msg ─────────────────────────────────────────────────────────────
@@ -1089,7 +1069,7 @@ class TestGetEta(TestCase):
         get_eta("o1")
         complete_order("o1")
         live_driver = Driver.objects.get(pk=self.driver.pk)
-        self.assertEqual(live_driver.get_current_city(), "Fairfield")
+        self.assertEqual(live_driver.current_city, "Fairfield")
 
         # next order placed in the city the driver just moved to should only need
         # same-city travel + delivery (15 + 5 = 20 raw minutes), still under the floor.

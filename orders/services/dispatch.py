@@ -235,30 +235,9 @@ def get_adjusted_total(base_total, payment_type):
     if payment_type == "Cash":
         ret_total = base_total
     elif payment_type == "Merchant Pay - ACH":
-        #send_merch_pay(base_total)
         ret_total = base_total + (base_total * Decimal("0.0225")) + Decimal("0.35")
     else:
         ret_total = base_total * CARD_FEE_MULTIPLIER
     
     return Decimal(ret_total)
 
-
-# builds list of purchased items from dict
-# @params:
-#   item_dict - parsed dict with section containing item info
-# @returns:
-#   item_list - list with all purchased items and their details
-def populate_items(item_dict):
-    item_list = []
-    item_count = 0
-
-    for item in item_dict:
-        item_name = item["variant"]["product"]["name"]
-        item_brand = item["variant"]["product"]["brand"]["name"]
-        item_num = item["quantity"]
-        
-        item_info = f'{item_name} | {item_brand} ({item_num})'
-        item_list.append(item_info)
-        item_count += item_num
-
-    return item_list, item_count

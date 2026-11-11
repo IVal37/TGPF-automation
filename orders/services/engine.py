@@ -27,7 +27,7 @@ def _pick_driver(order_city: str) -> Optional[Driver]:
     order_counts = queries.open_order_counts()
 
     def sort_key(d: Driver):
-        return (order_counts.get(d.get_id(), 0), get_travel_time(d.get_current_city(), order_city), d.get_id())
+        return (order_counts.get(d.pk, 0), get_travel_time(d.current_city, order_city), d.pk)
 
     return min(drivers, key=sort_key)
 
@@ -41,10 +41,6 @@ def _save_items(order: Order, items: list) -> None:
             quantity=item["quantity"],
             price=price,
         )
-
-# hand an already-saved order to a driver
-def _assign_order(order: Order, driver: Driver) -> None:
-    driver.add_order(order)
 
 # mark an order finished in the DB (used for completes, cancels, and shells).
 # status is the source of truth; `completed` is kept written (True for both
@@ -101,7 +97,7 @@ def add_order(
     order.save()
     _save_items(order, items)
     if assigned_driver is not None:
-        _assign_order(order, assigned_driver)
+        assigned_driver.add_order(order)
     else:
         logger.warning("add_order %s: no driver on shift; saved unassigned", order_id)
     return order
@@ -114,7 +110,7 @@ def assign_order(order_id: str, driver_id: int) -> None:
 
     order = Order.objects.get(order_id=order_id)
     driver = Driver.objects.get(pk=driver_id, is_active=True)
-    _assign_order(order, driver)
+    driver.add_order(order)
 
     if order.status in QUEUE_STATUSES:
         get_eta(order_id)
@@ -167,7 +163,7 @@ def complete_order(order_id: str, city: str = "") -> None:
     _close_order_in_db(order_id)
 
     if tracked is not None:
-        city = tracked.get_city()
+        city = tracked.city
         _move_driver(tracked.driver_id, city)
 
         shell = queries.find_open_shell(city, tracked.driver_id)
@@ -200,7 +196,7 @@ def add_shell_order(city: str) -> None:
         dispatch_sent=True,
     )
     order.save()
-    _assign_order(order, assigned_driver)
+    assigned_driver.add_order(order)
 
 # cancel an order (no restock capture); its driver ends up in the order's city
 def cancel_order(order_id: str) -> None:
@@ -209,7 +205,7 @@ def cancel_order(order_id: str) -> None:
     _close_order_in_db(order_id, OrderStatus.CANCELLED)
 
     if tracked is not None:
-        _move_driver(tracked.driver_id, tracked.get_city())
+        _move_driver(tracked.driver_id, tracked.city)
 
 # put a driver on shift
 def add_driver(driver_id: int) -> None:
@@ -238,5 +234,5 @@ def delete_driver(driver_id: int) -> None:
 def get_driver_city_queues(driver_id: int) -> DefaultDict[str, List[str]]:
     orders_by_city: DefaultDict[str, List[str]] = defaultdict(list)
     for order in queries.open_orders(driver_id):
-        orders_by_city[order.get_city()].append(order.order_id)
+        orders_by_city[order.city].append(order.order_id)
     return orders_by_city

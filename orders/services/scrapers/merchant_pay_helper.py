@@ -39,7 +39,3 @@ def FetchCode(timeout=120, poll=5):
             time.sleep(poll)
     raise TimeoutError("No 2FA code found")
 
-if __name__ == "__main__":
-    from dotenv import load_dotenv
-    load_dotenv()
-    print(FetchCode())

@@ -398,6 +398,10 @@ def _parse_cannabinoid_value(value: str) -> Tuple[str, str]:
 
 _PRODUCT_NAME_MATCH_THRESHOLD = 0.55
 
+# The fuzzy duplicate-product check is parked (off): set True to skip any invoice
+# product that fuzzy-matches one already in WebJoint's Products list.
+CHECK_DUPLICATE_PRODUCTS = False
+
 
 def _normalize_product_name(name: str) -> str:
     return re.sub(r'[^a-z0-9]+', ' ', name.lower()).strip()
@@ -466,15 +470,14 @@ def create_product(driver, wait, product_dicts: List[Dict[str, str]]):
 
     for product_dict in product_dicts:
         try:
-            # fuzzy duplicate check disabled for now (helpers above still
-            # intact — uncomment to re-enable):
-            # existing = _find_existing_product(driver, wait, product_dict["product_name"])
-            # if existing:
-            #     logger.info(
-            #         "create_product: skipping %r — fuzzy-matches existing product %r",
-            #         product_dict["product_name"], existing,
-            #     )
-            #     continue
+            if CHECK_DUPLICATE_PRODUCTS:
+                existing = _find_existing_product(driver, wait, product_dict["product_name"])
+                if existing:
+                    logger.info(
+                        "create_product: skipping %r — fuzzy-matches existing product %r",
+                        product_dict["product_name"], existing,
+                    )
+                    continue
 
             click(wait, (By.XPATH, '//*[text()="Add a New Product"]'))
             time.sleep(0.5)
@@ -681,66 +684,3 @@ def set_webhooks(driver, wait, base_url: str) -> None:
     if failure is not None:
         raise failure
 
-
-@_webjoint_session
-def get_customer_info(driver, wait):
-    try:
-        click(wait, (By.XPATH, _ORDERS_NAV_XPATH))
-        time.sleep(1)
-
-        click(wait, (By.XPATH, '/html/body/div[1]/div/div/main/div[2]/div/div[1]/div[2]/table/tbody/tr[1]/td[6]/span/a/div/span'))
-        time.sleep(1)
-
-        click(wait, (By.XPATH, "/html/body/div[1]/div/div/main/div[2]/div/div/form/div[1]/div/div/div/a[3]/span[1]/span/span"))
-        time.sleep(1)
-
-        order_count_text = wait.until(EC.element_to_be_clickable((By.XPATH, "/html/body/div[1]/div/div/main/div[2]/div/div/form/div[2]/span[3]/div/div/div/span/div/span[2]")))
-        order_count = order_count_text.text.split()[2]
-        time.sleep(1)
-
-        click(wait, (By.XPATH, "/html/body/div[1]/div/div/main/div[2]/div/div/form/div[1]/div/div/div/a[4]/span[1]/span/span"))
-        time.sleep(1)
-
-        #check
-
-        time.sleep(3)
-
-    except Exception as e:
-        logger.error("get_customer_info: failed to read customer info: %s", e)
-
-
-if __name__ == "__main__":
-    import sys
-    import django
-    from dotenv import load_dotenv
-    load_dotenv()
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'TGPFflows.settings')
-    django.setup()
-    #pull_from_chiles("<webjoint order id>")
-    #dispatch_to_driver("<webjoint order id>")
-    #get_customer_info()
-
-    test_list = [
-        {
-            "product_name": "Beach Party | Refined Live Resin | All-In-One",
-            "brand": "Raw Garden",
-            "product_type": "Concentrate",
-            "lineage": "Hybrid",
-            "strain": "Beach Party",
-            "category": "Cartridges",
-            "subcategory": "Live Resin & Live Rosin | 510 & All-In-One Disposable",
-            "seo_title": "Beach Party Refined Live Resin AIO Raw Garden",
-            "description": "Bright, fruity, and effortlessly fun — Beach Party delivers a tropical terpene blend with a balanced hybrid effect that keeps the vibe light. A refined live resin all-in-one made for good times.",
-            "sale_discount": "10%",
-            "tags": "",
-            "for_sale": "Yes",
-            "weight_size": 1,
-            "unit": "g",
-            "name_variant": "Beach Party AIO",
-            "price": 49.99,
-            "cannabinoids": {}
-        }
-    ]
-    create_product(test_list)
-    
