@@ -10,7 +10,7 @@ class OrdersConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'orders'
 
-    def ready(self):
+    def ready(self) -> None:
         # Django dev server calls ready() twice: once in the reloader and once
         # in the actual server process. RUN_MAIN='true' only in the server process,
         # so we skip the reloader pass to avoid starting a second ngrok tunnel.
@@ -31,7 +31,7 @@ class OrdersConfig(AppConfig):
     # This is a WebJoint write that RESTOCK_TEST_MODE deliberately does NOT block:
     # test mode still needs real orders to arrive. It only changes the webhook
     # addresses, never an order or a customer (the exception is also in CLAUDE.md).
-    def _start_tunnel_and_register_webhooks(self):
+    def _start_tunnel_and_register_webhooks(self) -> None:
         import logging
 
         from orders.services.notices import add_notice
@@ -48,7 +48,7 @@ class OrdersConfig(AppConfig):
 
     # the only startup job: moving drivers whose last known city is from an
     # earlier day back to the home city
-    def _reset_stale_driver_locations(self):
+    def _reset_stale_driver_locations(self) -> None:
         try:
             from orders.services.startup import reset_stale_driver_locations
             reset_stale_driver_locations()

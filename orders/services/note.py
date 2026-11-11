@@ -1,5 +1,6 @@
 # imports from project
 from orders.constants import CARD_FEE_MULTIPLIER, PaymentType
+from orders.models import Order
 from orders.services.pricing import effective_total, round_money
 from orders.services.time import format_time
 from orders.services.webhook_payload import is_weedmaps_source
@@ -9,7 +10,7 @@ from orders.services.webhook_payload import is_weedmaps_source
 # reads payment_type/total/eta directly off the order, so the caller is
 # responsible for passing an order whose fields reflect the final, approved
 # state (e.g. re-fetched from the DB after a dispatcher edits the ETA window).
-def get_order_notes(order):
+def get_order_notes(order: Order) -> str:
     is_wm = is_weedmaps_source(order.source)
     payment_type = order.payment_type
     debit_total = round_money(effective_total(order) * CARD_FEE_MULTIPLIER)

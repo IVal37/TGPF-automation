@@ -12,10 +12,10 @@ class Command(BaseCommand):
         "(needs GOOGLE_MAPS_API_KEY). Only missing, unconfirmed or stale pairs unless --force."
     )
 
-    def add_arguments(self, parser):
+    def add_arguments(self, parser) -> None:
         parser.add_argument("--force", action="store_true", help="refetch every pair, even fresh ones")
 
-    def handle(self, *args, **options):
+    def handle(self, *args, **options) -> None:
         if not travel.api_key():
             self.stdout.write("GOOGLE_MAPS_API_KEY is not set; nothing to do (the stored travel times are used).")
             return

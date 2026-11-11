@@ -17,7 +17,7 @@ from orders.services.scrapers.merchant_pay_helper import fetch_2fa_code
 logger = logging.getLogger(__name__)
 
 
-def send_merchant_pay_link():
+def send_merchant_pay_link() -> None:
     with browser_session("send_merchant_pay_link") as (driver, wait):
         driver.get("https://merchantpay.greenbaxmarketplace.io/login")
 

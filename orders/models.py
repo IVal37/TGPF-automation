@@ -22,11 +22,11 @@ class Driver(models.Model):
         self.location_updated_at = timezone.now()
         self.save(update_fields=["current_city", "location_updated_at"])
 
-    def add_order(self, order) -> None:
+    def add_order(self, order: "Order") -> None:
         order.driver = self
         order.save(update_fields=["driver"])
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 
@@ -96,7 +96,7 @@ class Order(models.Model):
     restock_reconciled = models.BooleanField(default=False)
     restock_cleared = models.BooleanField(default=False)
     # set on the companion (FSA/FSM) order, pointing at the real customer's
-    # order it's actually part of — see engine.get_effective_total
+    # order it's actually part of — see pricing.effective_total
     linked_order = models.ForeignKey(
         'self', null=True, blank=True,
         on_delete=models.SET_NULL, related_name='linked_companions'
@@ -107,7 +107,7 @@ class Order(models.Model):
         self.eta_end = end
         self.save(update_fields=["eta_start", "eta_end"])
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.eta_start and self.eta_end:
             return f"{format_time(self.eta_start)}-{format_time(self.eta_end)}"
         return f"Order {self.order_id}"
@@ -119,7 +119,7 @@ class OrderItem(models.Model):
     quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.product_name} (x{self.quantity})"
 
 
@@ -143,7 +143,7 @@ class Notice(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
     dismissed = models.BooleanField(default=False)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.message[:60]
 
 
@@ -158,7 +158,7 @@ class City(models.Model):
         ordering = ["name"]
         verbose_name_plural = "cities"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.name} (${self.minimum})"
 
 
@@ -171,7 +171,7 @@ class CustomerFlag(models.Model):
     class Meta:
         ordering = ["name"]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.name
 
 
@@ -193,7 +193,7 @@ class SpecialAddress(models.Model):
     class Meta:
         verbose_name_plural = "special addresses"
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.number} …{self.street_contains}… {self.city} {self.zip} ({self.kind})".replace("  ", " ")
 
 
@@ -214,5 +214,5 @@ class TravelTime(models.Model):
         ordering = ["city_a", "city_b"]
         constraints = [models.UniqueConstraint(fields=["city_a", "city_b"], name="unique_travel_pair")]
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"{self.city_a} - {self.city_b}: {self.minutes} min ({self.source})"

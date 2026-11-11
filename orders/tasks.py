@@ -59,7 +59,7 @@ class OrderTask(Task):
     # not about one order
     order_key = "order_id"
 
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
+    def on_failure(self, exc, task_id, args, kwargs, einfo) -> None:
         record_failure(self, exc, args, kwargs)
 
 # called once a task has failed for good
@@ -214,10 +214,10 @@ def _build_restock_message(status: str) -> str:
 
 
 @shared_task
-def send_third_st_restock():
+def send_third_st_restock() -> None:
     send_telegram_message(_build_restock_message(OrderStatus.STOREFRONT))
 
 
 @shared_task
-def send_delivery_restock():
+def send_delivery_restock() -> None:
     send_telegram_message(_build_restock_message(OrderStatus.COMPLETED))

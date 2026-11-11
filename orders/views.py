@@ -1,7 +1,7 @@
 # imports from std lib
 import json
 import logging
-from typing import Optional
+from typing import Any, Callable, Optional
 
 # imports from project
 from django.conf import settings
@@ -9,7 +9,7 @@ from django.conf import settings
 # imports from django
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404, HttpResponseForbidden, JsonResponse
+from django.http import Http404, HttpRequest, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 # was refused they say why in a message banner (and the log) instead of failing silently.
 
 
-def _done(request, problem: Optional[str] = None):
+def _done(request: HttpRequest, problem: Optional[str] = None) -> HttpResponse:
     """Back to the dashboard, showing `problem` (if any) in the message banner."""
     if problem:
         logger.warning("%s", problem)
@@ -47,7 +47,7 @@ def _done(request, problem: Optional[str] = None):
     return redirect("order_list")
 
 
-def _run(request, action, *args, **kwargs):
+def _run(request: HttpRequest, action: Callable[..., None], *args: Any, **kwargs: Any) -> HttpResponse:
     """Run a dispatch_queue action: unknown order -> 404, refused -> a message."""
     try:
         action(*args, **kwargs)
@@ -68,7 +68,7 @@ def _pk(value) -> int:
 # ── Dashboard pages ──────────────────────────────────────────────────────────
 
 @login_required
-def order_list(request):
+def order_list(request: HttpRequest) -> HttpResponse:
     return render(request, 'orders/order_list.html', {
         **restock.restock_context(),
         'active_drivers': list(queries.active_drivers()),
@@ -80,7 +80,7 @@ def order_list(request):
 
 
 @login_required
-def pending_orders_partial(request):
+def pending_orders_partial(request: HttpRequest) -> HttpResponse:
     """Just the dispatch-queue cards, polled by the dashboard's JS to auto-refresh that tab."""
     return render(request, 'orders/_pending_orders.html', {
         'pending_orders': dashboard.pending_cards(),
@@ -89,7 +89,7 @@ def pending_orders_partial(request):
 
 
 @login_required
-def restock_partial(request):
+def restock_partial(request: HttpRequest) -> HttpResponse:
     """Just the completed-orders/restock-list content, polled by the dashboard's JS."""
     return render(request, 'orders/_restock.html', restock.restock_context())
 
@@ -98,7 +98,7 @@ def restock_partial(request):
 
 @login_required
 @require_http_methods(["POST"])
-def add_driver_view(request):
+def add_driver_view(request: HttpRequest) -> HttpResponse:
     """Creates a driver (starting the day in HOME_CITY) and puts them on shift."""
     name = request.POST.get("name", "").strip()[:255]
     if not name:
@@ -111,7 +111,7 @@ def add_driver_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def toggle_driver_view(request):
+def toggle_driver_view(request: HttpRequest) -> HttpResponse:
     """Switches a driver on or off shift. Switching one off unassigns their open orders."""
     driver = get_object_or_404(Driver, pk=_pk(request.POST.get("driver_id")))
     if driver.is_active:
@@ -123,7 +123,7 @@ def toggle_driver_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def delete_driver_view(request):
+def delete_driver_view(request: HttpRequest) -> HttpResponse:
     driver_id = request.POST.get("driver_id")
     if driver_id:
         delete_driver(_pk(driver_id))
@@ -132,7 +132,7 @@ def delete_driver_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def set_driver_location_view(request):
+def set_driver_location_view(request: HttpRequest) -> HttpResponse:
     driver_id = request.POST.get("driver_id")
     city = request.POST.get("city")
     if driver_id and city:
@@ -142,7 +142,7 @@ def set_driver_location_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def add_shell_order_view(request):
+def add_shell_order_view(request: HttpRequest) -> HttpResponse:
     city = request.POST.get("city")
     if not city:
         return _done(request)
@@ -157,7 +157,7 @@ def add_shell_order_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def send_dispatch_msg_view(request):
+def send_dispatch_msg_view(request: HttpRequest) -> HttpResponse:
     return _run(
         request, dispatch_queue.send_dispatch,
         request.POST.get("order_id"), request.POST.get("eta_start", ""), request.POST.get("eta_end", ""),
@@ -167,19 +167,19 @@ def send_dispatch_msg_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def send_reschedule_msg_view(request):
+def send_reschedule_msg_view(request: HttpRequest) -> HttpResponse:
     return _run(request, dispatch_queue.send_reschedule, request.POST.get("order_id"))
 
 
 @login_required
 @require_http_methods(["POST"])
-def assign_driver_view(request):
+def assign_driver_view(request: HttpRequest) -> HttpResponse:
     return _run(request, dispatch_queue.assign_driver, request.POST.get("order_id"), request.POST.get("driver_id"))
 
 
 @login_required
 @require_http_methods(["POST"])
-def link_order_view(request):
+def link_order_view(request: HttpRequest) -> HttpResponse:
     order_id = request.POST.get("order_id")
     primary_order_id = request.POST.get("primary_order_id")
     if not order_id or not primary_order_id:
@@ -189,7 +189,7 @@ def link_order_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def unlink_order_view(request):
+def unlink_order_view(request: HttpRequest) -> HttpResponse:
     order_id = request.POST.get("order_id")
     if not order_id:
         return _done(request)
@@ -198,7 +198,7 @@ def unlink_order_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def retry_task_view(request):
+def retry_task_view(request: HttpRequest) -> HttpResponse:
     """Re-queues the browser task that failed for an order. The card asks for a confirm first
     when the failure was after the irreversible click (it may already have gone through)."""
     return _run(request, dispatch_queue.retry_failed_task, request.POST.get("order_id"))
@@ -206,13 +206,13 @@ def retry_task_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def dismiss_error_view(request):
+def dismiss_error_view(request: HttpRequest) -> HttpResponse:
     return _run(request, dispatch_queue.dismiss_error, request.POST.get("order_id"))
 
 
 @login_required
 @require_http_methods(["POST"])
-def clear_dispatch_queue_view(request):
+def clear_dispatch_queue_view(request: HttpRequest) -> HttpResponse:
     """Dismisses every order in the Dispatch Queue without texting anyone. The frontend
     confirms first, since real pending orders cleared this way never get their text."""
     dispatch_queue.clear_queue()
@@ -221,7 +221,7 @@ def clear_dispatch_queue_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def dismiss_notice_view(request):
+def dismiss_notice_view(request: HttpRequest) -> HttpResponse:
     if not Notice.objects.filter(pk=_pk(request.POST.get("notice_id"))).update(dismissed=True):
         raise Http404("no such notice")
     return _done(request)
@@ -229,7 +229,7 @@ def dismiss_notice_view(request):
 
 @login_required
 @require_http_methods(["POST"])
-def complete_order_manual(request):
+def complete_order_manual(request: HttpRequest) -> HttpResponse:
     order_id = request.POST.get("order_id")
     if order_id:
         complete_order(order_id=order_id)
@@ -240,21 +240,21 @@ def complete_order_manual(request):
 
 @login_required
 @require_http_methods(["POST"])
-def reconcile_restock(request):
+def reconcile_restock(request: HttpRequest) -> HttpResponse:
     restock.reconcile(request.POST.getlist("order_ids"))
     return _done(request)
 
 
 @login_required
 @require_http_methods(["POST"])
-def clear_restock(request):
+def clear_restock(request: HttpRequest) -> HttpResponse:
     restock.clear_restock_list()
     return _done(request)
 
 
 @login_required
 @require_http_methods(["POST"])
-def add_products_from_invoice(request):
+def add_products_from_invoice(request: HttpRequest) -> HttpResponse:
     invoice_file = request.FILES.get("invoice")
     if invoice_file is None:
         return _done(request, "Choose an invoice file first.")
@@ -272,7 +272,7 @@ def add_products_from_invoice(request):
 
 # ── WebJoint webhooks (each served at hooks/<WEBHOOK_SECRET>/<name>) ──────────
 
-def _json_body(request) -> dict:
+def _json_body(request: HttpRequest) -> dict:
     try:
         data = json.loads(request.body)
     except ValueError:
@@ -288,13 +288,13 @@ def _webhook_order_id(data: dict) -> str:
     return str(data["id"])
 
 
-def _rejected(view_name: str, error: InvalidPayload):
+def _rejected(view_name: str, error: InvalidPayload) -> JsonResponse:
     logger.warning("%s rejected: %s", view_name, error)
     return JsonResponse({"status": "error", "detail": str(error)}, status=400)
 
 
 @csrf_exempt
-def legacy_webhook(request):
+def legacy_webhook(request: HttpRequest) -> HttpResponse:
     """The old bare /new_order, /complete_order and /cancel_order paths. They no longer do
     anything (WebJoint must call hooks/<WEBHOOK_SECRET>/... instead) but stay routed so a stale
     registration shows up in the log. Exempt from CSRF only so a POST gets this logged 403
@@ -306,7 +306,7 @@ def legacy_webhook(request):
 @csrf_exempt
 @require_webhook_key
 @require_http_methods(["POST"])
-def new_order(request):
+def new_order(request: HttpRequest) -> HttpResponse:
     try:
         intake.handle_new_order(_json_body(request))
     except InvalidPayload as e:
@@ -317,7 +317,7 @@ def new_order(request):
 @csrf_exempt
 @require_webhook_key
 @require_http_methods(["POST"])
-def complete_order_view(request):
+def complete_order_view(request: HttpRequest) -> HttpResponse:
     try:
         data = _json_body(request)
         order_id = _webhook_order_id(data)
@@ -331,7 +331,7 @@ def complete_order_view(request):
 @csrf_exempt
 @require_webhook_key
 @require_http_methods(["POST"])
-def cancel_order_view(request):
+def cancel_order_view(request: HttpRequest) -> HttpResponse:
     try:
         order_id = _webhook_order_id(_json_body(request))
     except InvalidPayload as e:

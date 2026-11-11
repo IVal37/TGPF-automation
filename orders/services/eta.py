@@ -1,6 +1,6 @@
 # imports from std lib
 from datetime import datetime, timedelta
-from typing import DefaultDict, List
+from typing import DefaultDict, List, Tuple
 
 from orders.constants import (
     BUSY_ORDER_COUNT,
@@ -37,7 +37,7 @@ def estimate_window(order_id: str) -> None:
 
 
 # returns two times creating an eta window of when the order will arrive
-def get_eta(order_id: str):
+def get_eta(order_id: str) -> Tuple[str, str]:
     # extract info about order
     order: Order = Order.objects.get(order_id=order_id)
     driver_id = order.driver_id

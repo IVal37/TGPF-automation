@@ -1,5 +1,6 @@
 # imports from std lib
 from collections import defaultdict
+from datetime import date
 from typing import DefaultDict, Dict, Iterable, List, Optional
 
 # imports from third party
@@ -9,8 +10,9 @@ from django.utils import timezone
 # imports from project
 from orders.models import OPEN_STATUSES, QUEUE_STATUSES, Driver, Order, OrderStatus
 
-# The database is the only source of truth for who is driving where. Everything
-# that used to read the in-memory dicts goes through these helpers.
+# The database is the only source of truth for who is driving where (the web
+# server and the Celery workers are separate processes with no shared memory).
+# Anything that needs to know goes through these helpers.
 #
 # "Open" means: still queued or out with a driver (OPEN_STATUSES, which covers
 # open shells), assigned to a driver, and placed today. The same-day cut-off
@@ -18,7 +20,7 @@ from orders.models import OPEN_STATUSES, QUEUE_STATUSES, Driver, Order, OrderSta
 # complete/cancel webhook can't inflate routes or driver load forever.
 
 
-def today():
+def today() -> date:
     return timezone.now().date()
 
 

@@ -46,13 +46,13 @@ _CANCEL_XPATH = '//*[text()="Cancel"]'
 # usual cause is a slow page whose heading never showed) and nothing is ever
 # written to the wrong order
 class WrongOrderError(BeforeCommitError):
-    def __init__(self, expected, seen):
+    def __init__(self, expected, seen) -> None:
         super().__init__("open order", detail=f"expected order {expected!r} but the page shows {seen!r}")
         self.expected = expected
         self.seen = seen
 
 
-def _login(driver, wait):
+def _login(driver, wait) -> None:
     driver.get(_WEBJOINT_URL)
     fill(wait, (By.CLASS_NAME, "c199.c13"), settings.WEBJOINT_EMAIL)
     fill(wait, (By.CLASS_NAME, "c199.c202.c13"), settings.WEBJOINT_PASSWORD)
@@ -83,7 +83,7 @@ def _webjoint_session(fn):
 # Opens one specific order by its WebJoint id (the "<company>-<facility>-
 # <customer>-<id>" string, same as in the URL) and checks that the order the
 # page shows really is that one; raises WrongOrderError otherwise.
-def _open_order(driver, wait, order_id: str):
+def _open_order(driver, wait, order_id: str) -> None:
     if not order_id:
         raise WrongOrderError(order_id, None)
 
@@ -110,14 +110,14 @@ def _open_order(driver, wait, order_id: str):
 
 
 # Inventory -> a sub-page in its menu, e.g. "Products" or "Kits"
-def _open_inventory_page(wait, page: str):
+def _open_inventory_page(wait, page: str) -> None:
     click(wait, (By.XPATH, '//*[text()="Inventory"]'))
     click(wait, (By.XPATH, f'//*[text()="{page}"]'))
 
 
 # `committed`, if given, gets an item appended just before the click: the click
 # is the point of no return for whatever the caller is saving
-def _click_save_changes(wait, committed=None):
+def _click_save_changes(wait, committed=None) -> None:
     save_btn = wait.until(EC.element_to_be_clickable((By.XPATH, _SAVE_CHANGES_XPATH)))
     time.sleep(1)
     if committed is not None:
@@ -126,7 +126,7 @@ def _click_save_changes(wait, committed=None):
 
 
 # best-effort close of an open edit modal (no-op if there isn't one)
-def _try_cancel(driver):
+def _try_cancel(driver) -> None:
     try:
         driver.find_element(By.XPATH, _CANCEL_XPATH).click()
     except WebDriverException:
@@ -137,7 +137,7 @@ def _try_cancel(driver):
 # it raises BeforeCommitError (nothing was written, a retry is safe); the save
 # click and what follows propagate as-is and are never retried automatically.
 @_webjoint_session
-def fill_order_notes(driver, wait, order_id: str, order_notes: str):
+def fill_order_notes(driver, wait, order_id: str, order_notes: str) -> None:
     save_locator = (By.XPATH, '/html/body/div[4]/div[2]/div[2]/form/div[2]/button')
     with before_commit("open order"):
         _open_order(driver, wait, order_id)
@@ -166,7 +166,7 @@ def fill_order_notes(driver, wait, order_id: str, order_notes: str):
 # save had happened yet, otherwise the plain error (never retried automatically,
 # since a retry could repeat a save that went through).
 @_webjoint_session
-def pull_from_chiles(driver, wait, order_id: str):
+def pull_from_chiles(driver, wait, order_id: str) -> None:
     with before_commit("open order"):
         _open_order(driver, wait, order_id)
 
@@ -347,7 +347,7 @@ def _remove_from_kits(driver, wait, order_id: str, kit_removals: list, committed
 # Everything before it raises BeforeCommitError (no driver assigned, a retry is
 # safe); the confirm click and what follows propagate as-is, never auto-retried.
 @_webjoint_session
-def dispatch_to_driver(driver, wait, order_id: str):
+def dispatch_to_driver(driver, wait, order_id: str) -> None:
     confirm_locator = (By.XPATH, '/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]')
     with before_commit("open order"):
         _open_order(driver, wait, order_id)
@@ -381,7 +381,7 @@ def _option_with_text(options, text: str):
     return next((o for o in options if o.text.strip() == text), None)
 
 
-def _fill_autocomplete(driver, wait, input_el, value: str):
+def _fill_autocomplete(driver, wait, input_el, value: str) -> None:
     """Type into a MUI Autocomplete field and select the matching dropdown option.
 
     Picks the option whose text exactly matches `value`; if none exists, picks
@@ -412,7 +412,7 @@ def _fill_autocomplete(driver, wait, input_el, value: str):
 
 # the product form's autocomplete fields all share the same shape:
 # <div id="{field_id}"> wrapping the actual <input>
-def _fill_autocomplete_field(driver, wait, field_id: str, value: str):
+def _fill_autocomplete_field(driver, wait, field_id: str, value: str) -> None:
     input_el = wait.until(EC.element_to_be_clickable((By.XPATH, f'//*[@id="{field_id}"]//input')))
     _fill_autocomplete(driver, wait, input_el, value)
 
@@ -443,7 +443,7 @@ def _normalize_product_name(name: str) -> str:
     return re.sub(r'[^a-z0-9]+', ' ', name.lower()).strip()
 
 
-def _clear_react_input(input_el):
+def _clear_react_input(input_el) -> None:
     """Reliably empty a React-controlled MUI text field.
 
     The search box on the Products page is reused across every product in the
@@ -653,7 +653,7 @@ def _submit_product(driver, wait, committed: list) -> None:
 # cannot duplicate anything), otherwise the plain error (never retried
 # automatically, since a retry would create the earlier products again).
 @_webjoint_session
-def create_product(driver, wait, product_dicts: List[Dict[str, str]]):
+def create_product(driver, wait, product_dicts: List[Dict[str, str]]) -> None:
     with before_commit("open Products"):
         _open_inventory_page(wait, "Products")
         time.sleep(1)

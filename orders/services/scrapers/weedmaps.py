@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # retries. Without a Weedmaps number there is nothing to look up and it returns
 # "Cash" with no browser. The order stays "Payment: checking..." on the
 # dashboard after a final failure, where "Send as cash" is still available.
-def get_wm_payment_type(weedmaps_order_id):
+def get_wm_payment_type(weedmaps_order_id: str) -> str:
     payment_type = PaymentType.CASH
 
     if not weedmaps_order_id:

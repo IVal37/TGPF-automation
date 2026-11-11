@@ -3,10 +3,11 @@ import hmac
 import logging
 import re
 from functools import wraps
+from typing import Any, Callable
 
 # imports from django
 from django.conf import settings
-from django.http import HttpResponseForbidden
+from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 
 logger = logging.getLogger(__name__)
 
@@ -37,16 +38,16 @@ def webhook_urls(base_url: str) -> dict:
     return {name: f"{base}/hooks/{settings.WEBHOOK_SECRET}/{name}" for name in HOOK_NAMES}
 
 
-def client_ip(request) -> str:
+def client_ip(request: HttpRequest) -> str:
     forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
     return forwarded.split(",")[0].strip() or request.META.get("REMOTE_ADDR", "?")
 
 
 # wraps a webhook view so it only runs when the key in the URL path matches
 # WEBHOOK_SECRET; the wrapped view itself still takes just (request)
-def require_webhook_key(view):
+def require_webhook_key(view: Callable[..., HttpResponse]) -> Callable[..., HttpResponse]:
     @wraps(view)
-    def wrapper(request, key, *args, **kwargs):
+    def wrapper(request: HttpRequest, key: str, *args: Any, **kwargs: Any) -> HttpResponse:
         # compare_digest on bytes handles non-ASCII input and runs in constant time
         if not hmac.compare_digest(key.encode(), settings.WEBHOOK_SECRET.encode()):
             logger.warning("webhook rejected: wrong key for %s from %s", view.__name__, client_ip(request))

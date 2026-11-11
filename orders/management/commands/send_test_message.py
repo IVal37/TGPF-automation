@@ -9,12 +9,12 @@ class Command(BaseCommand):
         "TALKROUTE_TEST_PHONE through TalkRoute, --telegram posts to the restock channel."
     )
 
-    def add_arguments(self, parser):
+    def add_arguments(self, parser) -> None:
         channel = parser.add_mutually_exclusive_group(required=True)
         channel.add_argument("--sms", action="store_true", help="text TALKROUTE_TEST_PHONE")
         channel.add_argument("--telegram", action="store_true", help="post to the Telegram channel")
 
-    def handle(self, *args, **options):
+    def handle(self, *args, **options) -> None:
         if settings.RESTOCK_TEST_MODE:
             raise CommandError("RESTOCK_TEST_MODE is on: this command really sends, so it will not run.")
 

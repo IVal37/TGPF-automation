@@ -73,12 +73,12 @@ def fill(wait, locator, value):
                 raise
 
 
-def scroll_into_view(driver, el):
+def scroll_into_view(driver, el) -> None:
     driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
 
 
 # native click, falling back to a JS click when something overlays the element
-def click_with_js_fallback(driver, el):
+def click_with_js_fallback(driver, el) -> None:
     try:
         el.click()
     except WebDriverException:

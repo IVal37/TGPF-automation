@@ -19,7 +19,7 @@ from orders.services.scrapers.errors import at_commit, before_commit
 # it propagates as-is and is never retried automatically (the text may be out).
 # The login and the first-time setup modals are optional and stay swallowed.
 # order_ref names the order in failure logs/screenshots (never the phone number).
-def send_message(customer_number: str, dispatch_msg: str, order_ref=None):
+def send_message(customer_number: str, dispatch_msg: str, order_ref=None) -> None:
     with browser_session(
         "send_message", order_ref, {"profile.default_content_setting_values.media_stream_mic": BLOCK},
     ) as (driver, wait):

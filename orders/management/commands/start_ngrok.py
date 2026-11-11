@@ -18,7 +18,7 @@ NGROK_API_TIMEOUT = 10  # seconds
 TUNNEL_STARTUP_SECONDS = 5
 
 
-def start_ngrok():
+def start_ngrok() -> str:
     ngrok_process = subprocess.Popen(
         ["ngrok", "http", "8000"],
         stdout=subprocess.DEVNULL,
@@ -55,5 +55,5 @@ def get_endpoint_link() -> str:
 class Command(BaseCommand):
     help = 'Start ngrok tunnel'
 
-    def handle(self, *args, **options):
+    def handle(self, *args, **options) -> None:
         start_ngrok()

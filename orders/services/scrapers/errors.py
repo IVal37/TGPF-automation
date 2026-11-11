@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from typing import NoReturn
 
 
 # Raised by a scraper when a step fails BEFORE its irreversible click (the
@@ -8,7 +9,7 @@ from contextlib import contextmanager
 # click is never wrapped in this: it propagates as-is (tagged with `.step`) and
 # is never retried automatically, because it may have gone through.
 class BeforeCommitError(Exception):
-    def __init__(self, step: str, cause: BaseException = None, detail: str = None):
+    def __init__(self, step: str, cause: BaseException = None, detail: str = None) -> None:
         self.step = step
         self.cause = cause
         if detail is None:
@@ -56,7 +57,7 @@ def at_commit(step: str):
 # to retry, so this is a BeforeCommitError. After one it must never be retried
 # automatically, so it is a plain error (a BeforeCommitError seen here is
 # converted, because retrying would repeat what already went through).
-def fail(step: str, exc: BaseException, committed: bool):
+def fail(step: str, exc: BaseException, committed: bool) -> NoReturn:
     if not committed:
         if isinstance(exc, BeforeCommitError):
             raise exc
