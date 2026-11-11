@@ -173,130 +173,15 @@ def pull_from_chiles(driver, wait, order_id: str):
         row_count = len(driver.find_elements(By.XPATH, '//tbody/tr'))
         for idx in range(row_count):
             try:
-                rows = driver.find_elements(By.XPATH, '//tbody/tr')
-                if idx >= len(rows):
+                if not _pull_row(driver, wait, idx, kit_removals, committed):
                     break
-                row = rows[idx]
-                has_chiles = "Chiles Rd" in row.text
-                has_shift  = "Starting"  in row.text or "Closing" in row.text
-                if has_chiles and not has_shift:
-                    continue  # purely Chiles, nothing to do
-                is_split = has_chiles and has_shift
-
-                edit_btn = row.find_element(By.XPATH, './/button[.//*[local-name()="path"][contains(@d,"M3 17.25")]]')
-                scroll_into_view(driver, edit_btn)
-                time.sleep(0.5)
-                edit_btn.click()
-
-                if is_split:
-                    # Pulling From is already expanded for multi-kit rows — clicking the
-                    # header would collapse it, so skip straight to the remove/qty logic.
-                    wait.until(EC.presence_of_element_located((By.XPATH, '//div[@role="dialog"]')))
-                    time.sleep(0.5)
-                else:
-                    pulling_from_button = wait.until(EC.element_to_be_clickable(
-                        (By.XPATH, '//div[@role="button" and .//*[contains(text(),"Pulling From")]]')
-                    ))
-                    scroll_into_view(driver, pulling_from_button)
-                    time.sleep(0.5)
-                    pulling_from_button.click()
-                    time.sleep(0.5)
-
-                try:
-                    modal_el = driver.find_element(By.XPATH, '//div[@role="dialog"]')
-                    remove_btns = modal_el.find_elements(By.CLASS_NAME, "c420")
-                except WebDriverException:
-                    remove_btns = []
-
-                if is_split:
-                    chiles_idx = None
-                    shift_idx = None
-                    if len(remove_btns) >= 2:
-                        for i in range(len(remove_btns)):
-                            try:
-                                qty_el = driver.find_element(By.ID, f"packagequantities[{i}].nfrompackagequantity")
-                                row_text = driver.execute_script(
-                                    "var e=arguments[0]; while(e && !e.querySelector('.c420')) e=e.parentElement; return e ? e.innerText : '';",
-                                    qty_el
-                                )
-                                if "Chiles Rd" in row_text:
-                                    chiles_idx = i
-                                elif "Closing Shift" in row_text or "Starting Shift" in row_text:
-                                    shift_idx = i
-                            except WebDriverException:
-                                pass
-                    if chiles_idx is not None and shift_idx is not None:
-                        shift_input = driver.find_element(By.ID, f"packagequantities[{shift_idx}].nfrompackagequantity")
-                        shift_qty = int(shift_input.get_attribute("value") or "1")
-                        chiles_input = driver.find_element(By.ID, f"packagequantities[{chiles_idx}].nfrompackagequantity")
-                        chiles_qty = int(chiles_input.get_attribute("value") or "0")
-                        chiles_input.clear()
-                        chiles_input.send_keys(str(chiles_qty + shift_qty))
-                        time.sleep(0.3)
-                        remove_btns[shift_idx].click()
-                        time.sleep(1.5)
-                        _click_save_changes(wait, committed)
-                        time.sleep(1)
-                    else:
-                        _try_cancel(driver)
-                    continue
-
-                # css- classes from emotion are stable (hashed from styles, not random)
-                package_select_control = wait.until(EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, 'div.css-1j4kz5m')
-                ))
-                scroll_into_view(driver, package_select_control)
-                time.sleep(0.3)
-                package_select_control.click()
-                time.sleep(1)
-
-                chiles_opts   = driver.find_elements(By.XPATH, '//*[@role="option" and contains(.,"@ Chiles Rd Shop")]')
-                closing_opts  = driver.find_elements(By.XPATH, '//*[@role="option" and contains(.,"@ Closing Shift Mobile Inventory")]')
-                starting_opts = driver.find_elements(By.XPATH, '//*[@role="option" and contains(.,"@ Starting Shift Mobile Inventory")]')
-
-                time.sleep(1)
-
-                if chiles_opts:
-                    chiles_opts[0].click()
-                    time.sleep(1.5)
-                    _click_save_changes(wait, committed)
-                else:
-                    item_name = row.text.split("\n")[0].strip()
-                    if starting_opts:
-                        kit_removals.append((item_name, "Closing Shift Mobile Inventory"))
-                    elif closing_opts:
-                        kit_removals.append((item_name, "Starting Shift Mobile Inventory"))
-                    click(wait, (By.XPATH, _CANCEL_XPATH))
-
-                time.sleep(1)
-
             except Exception as e:
                 logger.error("pull_from_chiles (order %s): row %d failed: %s", order_id, idx, e)
                 failures.append((f"row {idx}", e))
                 _try_cancel(driver)
 
         if kit_removals:
-            try:
-                _open_inventory_page(wait, "Kits")
-                for product_name, kit_name in kit_removals:
-                    try:
-                        click(wait, (By.XPATH, f'//*[text()="{kit_name}"]'))
-                        time.sleep(1)
-                        fill(wait, (By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/div/div/div/input'), product_name)
-                        time.sleep(1)
-                        try:
-                            remove_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button')))
-                        except WebDriverException:
-                            continue
-                        committed.append(True)
-                        remove_btn.click()
-                        time.sleep(1)
-                    except Exception as e:
-                        logger.error("pull_from_chiles (order %s): kit removal failed for %s from %s: %s", order_id, product_name, kit_name, e)
-                        failures.append((f"kit removal of {product_name}", e))
-            except Exception as e:
-                logger.error("pull_from_chiles (order %s): kit removal navigation failed: %s", order_id, e)
-                failures.append(("open Kits", e))
+            _remove_from_kits(driver, wait, order_id, kit_removals, committed, failures)
 
     except Exception as e:
         logger.error("pull_from_chiles (order %s): row loop failed: %s", order_id, e)
@@ -307,6 +192,148 @@ def pull_from_chiles(driver, wait, order_id: str):
         if len(failures) > 1:
             step += f" (+{len(failures) - 1} more)"
         fail(step, exc, bool(committed))
+
+
+def _pull_row(driver, wait, idx: int, kit_removals: list, committed: list) -> bool:
+    """Handle one row of the order's item table: move its pull to Chiles, or note a kit to
+    remove it from. Returns False when the table has fewer rows than expected (stop looping)."""
+    rows = driver.find_elements(By.XPATH, '//tbody/tr')
+    if idx >= len(rows):
+        return False  # fewer rows than expected: stop
+    row = rows[idx]
+    has_chiles = "Chiles Rd" in row.text
+    has_shift  = "Starting"  in row.text or "Closing" in row.text
+    if has_chiles and not has_shift:
+        return True  # purely Chiles, nothing to do
+    is_split = has_chiles and has_shift
+
+    edit_btn = row.find_element(By.XPATH, './/button[.//*[local-name()="path"][contains(@d,"M3 17.25")]]')
+    scroll_into_view(driver, edit_btn)
+    time.sleep(0.5)
+    edit_btn.click()
+
+    if is_split:
+        # Pulling From is already expanded for multi-kit rows — clicking the
+        # header would collapse it, so skip straight to the remove/qty logic.
+        wait.until(EC.presence_of_element_located((By.XPATH, '//div[@role="dialog"]')))
+        time.sleep(0.5)
+    else:
+        pulling_from_button = wait.until(EC.element_to_be_clickable(
+            (By.XPATH, '//div[@role="button" and .//*[contains(text(),"Pulling From")]]')
+        ))
+        scroll_into_view(driver, pulling_from_button)
+        time.sleep(0.5)
+        pulling_from_button.click()
+        time.sleep(0.5)
+
+    remove_btns = _modal_remove_buttons(driver)
+
+    if is_split:
+        _pull_split_row(driver, wait, remove_btns, committed)
+    else:
+        _pull_single_row(driver, wait, row, kit_removals, committed)
+    return True
+
+
+def _modal_remove_buttons(driver) -> list:
+    """The remove buttons of the open edit dialog, or [] if it has none."""
+    try:
+        modal_el = driver.find_element(By.XPATH, '//div[@role="dialog"]')
+        return modal_el.find_elements(By.CLASS_NAME, "c420")
+    except WebDriverException:
+        return []
+
+
+def _pull_split_row(driver, wait, remove_btns: list, committed: list) -> None:
+    """A row already pulled from both Chiles and a shift kit: fold the kit's quantity into Chiles."""
+    chiles_idx = None
+    shift_idx = None
+    if len(remove_btns) >= 2:
+        for i in range(len(remove_btns)):
+            try:
+                qty_el = driver.find_element(By.ID, f"packagequantities[{i}].nfrompackagequantity")
+                row_text = driver.execute_script(
+                    "var e=arguments[0]; while(e && !e.querySelector('.c420')) e=e.parentElement; return e ? e.innerText : '';",
+                    qty_el
+                )
+                if "Chiles Rd" in row_text:
+                    chiles_idx = i
+                elif "Closing Shift" in row_text or "Starting Shift" in row_text:
+                    shift_idx = i
+            except WebDriverException:
+                pass
+    if chiles_idx is not None and shift_idx is not None:
+        shift_input = driver.find_element(By.ID, f"packagequantities[{shift_idx}].nfrompackagequantity")
+        shift_qty = int(shift_input.get_attribute("value") or "1")
+        chiles_input = driver.find_element(By.ID, f"packagequantities[{chiles_idx}].nfrompackagequantity")
+        chiles_qty = int(chiles_input.get_attribute("value") or "0")
+        chiles_input.clear()
+        chiles_input.send_keys(str(chiles_qty + shift_qty))
+        time.sleep(0.3)
+        remove_btns[shift_idx].click()
+        time.sleep(1.5)
+        _click_save_changes(wait, committed)
+        time.sleep(1)
+    else:
+        _try_cancel(driver)
+
+
+def _pull_single_row(driver, wait, row, kit_removals: list, committed: list) -> None:
+    """A row pulled from one place: switch it to Chiles if Chiles has stock, otherwise
+    queue a removal from the other shift kit."""
+    # css- classes from emotion are stable (hashed from styles, not random)
+    package_select_control = wait.until(EC.element_to_be_clickable(
+        (By.CSS_SELECTOR, 'div.css-1j4kz5m')
+    ))
+    scroll_into_view(driver, package_select_control)
+    time.sleep(0.3)
+    package_select_control.click()
+    time.sleep(1)
+
+    chiles_opts   = driver.find_elements(By.XPATH, '//*[@role="option" and contains(.,"@ Chiles Rd Shop")]')
+    closing_opts  = driver.find_elements(By.XPATH, '//*[@role="option" and contains(.,"@ Closing Shift Mobile Inventory")]')
+    starting_opts = driver.find_elements(By.XPATH, '//*[@role="option" and contains(.,"@ Starting Shift Mobile Inventory")]')
+
+    time.sleep(1)
+
+    if chiles_opts:
+        chiles_opts[0].click()
+        time.sleep(1.5)
+        _click_save_changes(wait, committed)
+    else:
+        item_name = row.text.split("\n")[0].strip()
+        if starting_opts:
+            kit_removals.append((item_name, "Closing Shift Mobile Inventory"))
+        elif closing_opts:
+            kit_removals.append((item_name, "Starting Shift Mobile Inventory"))
+        click(wait, (By.XPATH, _CANCEL_XPATH))
+
+    time.sleep(1)
+
+
+def _remove_from_kits(driver, wait, order_id: str, kit_removals: list, committed: list, failures: list) -> None:
+    """Remove each queued item from its shift kit on the Kits page."""
+    try:
+        _open_inventory_page(wait, "Kits")
+        for product_name, kit_name in kit_removals:
+            try:
+                click(wait, (By.XPATH, f'//*[text()="{kit_name}"]'))
+                time.sleep(1)
+                fill(wait, (By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/div/div/div/input'), product_name)
+                time.sleep(1)
+                try:
+                    remove_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button')))
+                except WebDriverException:
+                    continue
+                committed.append(True)
+                remove_btn.click()
+                time.sleep(1)
+            except Exception as e:
+                logger.error("pull_from_chiles (order %s): kit removal failed for %s from %s: %s", order_id, product_name, kit_name, e)
+                failures.append((f"kit removal of {product_name}", e))
+    except Exception as e:
+        logger.error("pull_from_chiles (order %s): kit removal navigation failed: %s", order_id, e)
+        failures.append(("open Kits", e))
 
 
 # The commit point is the click on the assign-driver dialog's confirm button.
@@ -456,6 +483,163 @@ def _find_existing_product(driver, wait, name: str) -> Optional[str]:
     return best_match if best_ratio >= _PRODUCT_NAME_MATCH_THRESHOLD else None
 
 
+def _fill_product_form(driver, wait, product_dict: Dict[str, str]) -> None:
+    """Open "Add a New Product" and fill in every tab of the form (up to, not including, the submit)."""
+    click(wait, (By.XPATH, '//*[text()="Add a New Product"]'))
+    time.sleep(0.5)
+
+    fill(wait, (By.XPATH, '//*[@id="name"]'), product_dict["product_name"])
+    time.sleep(0.5)
+
+    _fill_autocomplete_field(driver, wait, "brand", product_dict["brand"])
+    time.sleep(0.5)
+
+    _fill_autocomplete_field(driver, wait, "product_type", product_dict["product_type"])
+    time.sleep(0.5)
+
+    if product_dict["lineage"] != "":
+        lineage_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="lineage"]/div/div[1]/div[2]')))
+        scroll_into_view(driver, lineage_dropdown)
+        lineage_dropdown.click()
+        time.sleep(0.5)
+        lineage_options = wait.until(EC.presence_of_all_elements_located((By.XPATH, '//*[@role="option"]')))
+        lineage_option = _option_with_text(lineage_options, product_dict["lineage"])
+        if lineage_option is None:
+            raise ValueError(f'no lineage dropdown option matches {product_dict["lineage"]!r}')
+        lineage_option.click()
+        time.sleep(0.5)
+
+    if product_dict["strain"] != "":
+        _fill_autocomplete_field(driver, wait, "strain", product_dict["strain"])
+        time.sleep(0.5)
+
+    _fill_autocomplete_field(driver, wait, "category", product_dict["category"])
+    time.sleep(0.5)
+
+    _fill_autocomplete_field(driver, wait, "subcategory", product_dict["subcategory"])
+    time.sleep(0.5)
+
+    if product_dict.get("for_sale", "") == "No":
+        click(wait, (By.XPATH, '//*[@id="forSale"]//label[2]'))
+        time.sleep(0.5)
+
+    if product_dict.get("sale_discount", "") != "0%":
+        fill(wait, (By.XPATH, '//*[@id="salepricediscount"]'), product_dict["sale_discount"])
+        time.sleep(0.5)
+
+    fill(wait, (By.XPATH, '//*[@id="seoTitle"]'), product_dict["seo_title"])
+    time.sleep(0.5)
+
+    description_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[1]/div/div[2]/div[8]/div/div/div/div[3]/div[1]')))
+    description_input.clear()
+    time.sleep(0.5)
+    description_input.send_keys(product_dict["description"])
+    time.sleep(0.5)
+
+    fill(wait, (By.XPATH, '//*[@id="seo_description"]'), product_dict["description"])
+    time.sleep(0.5)
+
+    pricing_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[1]/div/div/div/a[2]/span[1]/span/span')))
+    scroll_into_view(driver, pricing_button)
+    time.sleep(0.3)
+    pricing_button.click()
+    time.sleep(0.5)
+
+    click(wait, (By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[2]/div/div/ul/li/span/button/span[1]'))
+    time.sleep(0.5)
+
+    fill(wait, (By.XPATH, '//*[@id="variants[0].unitweight"]'), product_dict["weight_size"])
+    time.sleep(0.5)
+
+    click(wait, (By.XPATH, '//*[@id="unit"]/div/div[1]/div[2]'))
+    click(wait, (By.XPATH, f'//*[@role="option" and text()="{product_dict["unit"]}"]'))
+    time.sleep(0.5)
+
+    fill(wait, (By.XPATH, '//*[@id="variants[0].price"]'), product_dict["price"])
+    time.sleep(0.5)
+
+    click(wait, (By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[1]/div/div/div/a[3]/span[1]/span/span'))
+    time.sleep(0.5)
+
+    for idx, (cannabinoid, value) in enumerate(product_dict.get("cannabinoids", {}).items()):
+        _add_cannabinoid(driver, wait, idx, cannabinoid, value)
+
+    time.sleep(1)
+
+
+def _add_cannabinoid(driver, wait, idx: int, cannabinoid: str, value: str) -> None:
+    """Add one cannabinoid row (type, unit, min and, for plain types, max) to the product form."""
+    amount, unit_option = _parse_cannabinoid_value(value)
+
+    click(wait, (By.XPATH,
+        '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[3]'
+        f'//button[{ci_contains("add")}]'
+    ))
+    time.sleep(0.5)
+
+    # each added row gets its own (non-unique) id="type"/"id="unit"; the
+    # most recently added row is always the last match in the DOM
+    click(wait, (By.XPATH, '(//*[@id="type"])[last()]/div/div[1]/div[2]'))
+    click(wait, (By.XPATH, f'//*[@role="option" and text()="{cannabinoid}"]'))
+    time.sleep(0.5)
+
+    cannabinoid_unit_dropdown = wait.until(EC.element_to_be_clickable(
+        (By.XPATH, '(//*[@id="unit"])[last()]//div[contains(@class, "indicatorContainer")]')
+    ))
+    scroll_into_view(driver, cannabinoid_unit_dropdown)
+    time.sleep(0.3)
+    cannabinoid_unit_dropdown.click()
+    click(wait, (By.XPATH, f'//*[@role="option" and text()="{unit_option}"]'))
+    time.sleep(0.5)
+
+    fill(wait, (By.XPATH, f'//*[@id="cannabinoids[{idx}].min"]'), amount)
+    time.sleep(0.5)
+
+    # "Total X" cannabinoid types (e.g. "Total THC") only render a single
+    # "Total" field (the min input above) — there's no max input in the DOM
+    # at all for these, unlike plain types (e.g. "THC") which show min/max
+    if not cannabinoid.strip().lower().startswith("total"):
+        fill(wait, (By.XPATH, f'//*[@id="cannabinoids[{idx}].max"]'), amount)
+        time.sleep(0.5)
+
+
+def _submit_product(driver, wait, committed: list) -> None:
+    """Click the product form's submit button. The click is this product's commit point."""
+    # document.getElementById("name") isn't unique on this SPA — other mounted
+    # routes/forms elsewhere in the DOM also have a "name" field, so relying on
+    # its .form property can silently grab the wrong (hidden) form. Instead,
+    # gather every type=submit button matching the visible label and pick
+    # whichever one is actually displayed and enabled — that's always the one
+    # in the currently-visible product form.
+    def _visible_submit_button(_):
+        candidates = driver.find_elements(By.XPATH,
+            f'//button[@type="submit"][{ci_contains("create product")} or {ci_contains("save changes")}]'
+        )
+        for btn in candidates:
+            if btn.is_displayed() and btn.is_enabled():
+                return btn
+        return False
+
+    try:
+        save_product_button = wait.until(_visible_submit_button)
+    except TimeoutException:
+        candidates = driver.find_elements(By.XPATH, '//button[@type="submit"]')
+        logger.error(
+            "create_product: no visible+enabled submit button found — candidates=%s",
+            [
+                (driver.execute_script("return arguments[0].outerHTML;", b), b.is_displayed(), b.is_enabled())
+                for b in candidates
+            ],
+        )
+        raise
+    scroll_into_view(driver, save_product_button)
+    time.sleep(1)
+    committed.append(True)
+    click_with_js_fallback(driver, save_product_button)
+
+    time.sleep(2)
+
+
 # The commit point is each product's submit click. A product that fails before
 # its submit is skipped as before (the others continue). At the end, if any
 # failed: BeforeCommitError when no product had been submitted yet (a retry
@@ -481,151 +665,9 @@ def create_product(driver, wait, product_dicts: List[Dict[str, str]]):
                     )
                     continue
 
-            click(wait, (By.XPATH, '//*[text()="Add a New Product"]'))
-            time.sleep(0.5)
+            _fill_product_form(driver, wait, product_dict)
 
-            fill(wait, (By.XPATH, '//*[@id="name"]'), product_dict["product_name"])
-            time.sleep(0.5)
-
-            _fill_autocomplete_field(driver, wait, "brand", product_dict["brand"])
-            time.sleep(0.5)
-
-            _fill_autocomplete_field(driver, wait, "product_type", product_dict["product_type"])
-            time.sleep(0.5)
-
-            if product_dict["lineage"] != "":
-                lineage_dropdown = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="lineage"]/div/div[1]/div[2]')))
-                scroll_into_view(driver, lineage_dropdown)
-                lineage_dropdown.click()
-                time.sleep(0.5)
-                lineage_options = wait.until(EC.presence_of_all_elements_located((By.XPATH, '//*[@role="option"]')))
-                lineage_option = _option_with_text(lineage_options, product_dict["lineage"])
-                if lineage_option is None:
-                    raise ValueError(f'no lineage dropdown option matches {product_dict["lineage"]!r}')
-                lineage_option.click()
-                time.sleep(0.5)
-
-            if product_dict["strain"] != "":
-                _fill_autocomplete_field(driver, wait, "strain", product_dict["strain"])
-                time.sleep(0.5)
-
-            _fill_autocomplete_field(driver, wait, "category", product_dict["category"])
-            time.sleep(0.5)
-
-            _fill_autocomplete_field(driver, wait, "subcategory", product_dict["subcategory"])
-            time.sleep(0.5)
-
-            if product_dict.get("for_sale", "") == "No":
-                click(wait, (By.XPATH, '//*[@id="forSale"]//label[2]'))
-                time.sleep(0.5)
-
-            if product_dict.get("sale_discount", "") != "0%":
-                fill(wait, (By.XPATH, '//*[@id="salepricediscount"]'), product_dict["sale_discount"])
-                time.sleep(0.5)
-
-            fill(wait, (By.XPATH, '//*[@id="seoTitle"]'), product_dict["seo_title"])
-            time.sleep(0.5)
-
-            description_input = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[1]/div/div[2]/div[8]/div/div/div/div[3]/div[1]')))
-            description_input.clear()
-            time.sleep(0.5)
-            description_input.send_keys(product_dict["description"])
-            time.sleep(0.5)
-
-            fill(wait, (By.XPATH, '//*[@id="seo_description"]'), product_dict["description"])
-            time.sleep(0.5)
-
-            pricing_button = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[1]/div/div/div/a[2]/span[1]/span/span')))
-            scroll_into_view(driver, pricing_button)
-            time.sleep(0.3)
-            pricing_button.click()
-            time.sleep(0.5)
-
-            click(wait, (By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[2]/div/div/ul/li/span/button/span[1]'))
-            time.sleep(0.5)
-
-            fill(wait, (By.XPATH, '//*[@id="variants[0].unitweight"]'), product_dict["weight_size"])
-            time.sleep(0.5)
-
-            click(wait, (By.XPATH, '//*[@id="unit"]/div/div[1]/div[2]'))
-            click(wait, (By.XPATH, f'//*[@role="option" and text()="{product_dict["unit"]}"]'))
-            time.sleep(0.5)
-
-            fill(wait, (By.XPATH, '//*[@id="variants[0].price"]'), product_dict["price"])
-            time.sleep(0.5)
-
-            click(wait, (By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[1]/div/div/div/a[3]/span[1]/span/span'))
-            time.sleep(0.5)
-
-            for idx, (cannabinoid, value) in enumerate(product_dict.get("cannabinoids", {}).items()):
-                amount, unit_option = _parse_cannabinoid_value(value)
-
-                click(wait, (By.XPATH,
-                    '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span[3]'
-                    f'//button[{ci_contains("add")}]'
-                ))
-                time.sleep(0.5)
-
-                # each added row gets its own (non-unique) id="type"/"id="unit"; the
-                # most recently added row is always the last match in the DOM
-                click(wait, (By.XPATH, '(//*[@id="type"])[last()]/div/div[1]/div[2]'))
-                click(wait, (By.XPATH, f'//*[@role="option" and text()="{cannabinoid}"]'))
-                time.sleep(0.5)
-
-                cannabinoid_unit_dropdown = wait.until(EC.element_to_be_clickable(
-                    (By.XPATH, '(//*[@id="unit"])[last()]//div[contains(@class, "indicatorContainer")]')
-                ))
-                scroll_into_view(driver, cannabinoid_unit_dropdown)
-                time.sleep(0.3)
-                cannabinoid_unit_dropdown.click()
-                click(wait, (By.XPATH, f'//*[@role="option" and text()="{unit_option}"]'))
-                time.sleep(0.5)
-
-                fill(wait, (By.XPATH, f'//*[@id="cannabinoids[{idx}].min"]'), amount)
-                time.sleep(0.5)
-
-                # "Total X" cannabinoid types (e.g. "Total THC") only render a single
-                # "Total" field (the min input above) — there's no max input in the DOM
-                # at all for these, unlike plain types (e.g. "THC") which show min/max
-                if not cannabinoid.strip().lower().startswith("total"):
-                    fill(wait, (By.XPATH, f'//*[@id="cannabinoids[{idx}].max"]'), amount)
-                    time.sleep(0.5)
-
-            time.sleep(1)
-
-            # document.getElementById("name") isn't unique on this SPA — other mounted
-            # routes/forms elsewhere in the DOM also have a "name" field, so relying on
-            # its .form property can silently grab the wrong (hidden) form. Instead,
-            # gather every type=submit button matching the visible label and pick
-            # whichever one is actually displayed and enabled — that's always the one
-            # in the currently-visible product form.
-            def _visible_submit_button(_):
-                candidates = driver.find_elements(By.XPATH,
-                    f'//button[@type="submit"][{ci_contains("create product")} or {ci_contains("save changes")}]'
-                )
-                for btn in candidates:
-                    if btn.is_displayed() and btn.is_enabled():
-                        return btn
-                return False
-
-            try:
-                save_product_button = wait.until(_visible_submit_button)
-            except TimeoutException:
-                candidates = driver.find_elements(By.XPATH, '//button[@type="submit"]')
-                logger.error(
-                    "create_product: no visible+enabled submit button found — candidates=%s",
-                    [
-                        (driver.execute_script("return arguments[0].outerHTML;", b), b.is_displayed(), b.is_enabled())
-                        for b in candidates
-                    ],
-                )
-                raise
-            scroll_into_view(driver, save_product_button)
-            time.sleep(1)
-            committed.append(True)
-            click_with_js_fallback(driver, save_product_button)
-
-            time.sleep(2)
+            _submit_product(driver, wait, committed)
 
         except Exception as e:
             logger.exception("create_product: product creation failed: %s", e)
