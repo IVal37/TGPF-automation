@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 from django.conf import settings
 
 # imports from selenium
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -43,13 +44,13 @@ def get_wm_payment_type(weedmaps_order_id):
             fill(wait, (By.ID, "user_username"), settings.WEEDMAPS_EMAIL)
             fill(wait, (By.ID, "user_password"), settings.WEEDMAPS_PASSWORD)
             click(wait, (By.CLASS_NAME, "btn.btn-signup-primary"))
-        except Exception:
+        except WebDriverException:
             pass
 
         # move to orders
         try:          
             click(wait, (By.ID, "side-nav-orders-all-orders"))
-        except Exception:
+        except WebDriverException:
             pass
 
         # click into this order's row, then check the page header says it is
@@ -78,7 +79,7 @@ def get_wm_payment_type(weedmaps_order_id):
                 ))
                 confirm_btn.click()
                 time.sleep(2)
-            except Exception:
+            except WebDriverException:
                 pass
 
             # get payment type

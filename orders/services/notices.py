@@ -1,6 +1,8 @@
 # imports from std lib
 import logging
 
+from django.db import DatabaseError
+
 from orders.models import Notice
 
 logger = logging.getLogger(__name__)
@@ -12,5 +14,5 @@ logger = logging.getLogger(__name__)
 def add_notice(message: str, level: str = "info") -> None:
     try:
         Notice.objects.create(message=message, level=level)
-    except Exception as e:
+    except DatabaseError as e:
         logger.error("could not save dashboard notice %r: %s", message, e)

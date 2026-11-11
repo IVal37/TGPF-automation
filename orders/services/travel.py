@@ -27,6 +27,10 @@ MAX_DESTINATIONS = 25    # Distance Matrix limit per request
 # Google outage from costing a 3-second wait on every route calculation.
 _failed_until: Dict[tuple, float] = {}
 
+# what a failed Google lookup can raise: network/HTTP trouble, a non-OK status or "no route"
+# (ValueError), or an answer shaped differently than expected (KeyError/IndexError)
+LOOKUP_ERRORS = (requests.RequestException, ValueError, KeyError, IndexError)
+
 
 def reset_failure_memo() -> None:
     _failed_until.clear()
@@ -112,7 +116,7 @@ def get_travel_time(city_a: str, city_b: str) -> int:
             minutes = fetch_minutes(a, [b]).get(b)
             if minutes is None:
                 raise ValueError("Google found no driving route")
-        except Exception as e:
+        except LOOKUP_ERRORS as e:
             _failed_until[(a, b)] = time.monotonic() + RETRY_AFTER
             logger.warning(
                 "get_travel_time: Google lookup for %s - %s failed, using the stored number: %s: %s",

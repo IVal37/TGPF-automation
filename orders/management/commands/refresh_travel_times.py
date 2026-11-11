@@ -39,7 +39,7 @@ class Command(BaseCommand):
                 chunk = destinations[start:start + travel.MAX_DESTINATIONS]
                 try:
                     answers = travel.fetch_minutes(origin, chunk)
-                except Exception as e:
+                except travel.LOOKUP_ERRORS as e:
                     failed += len(chunk)
                     self.stderr.write(f"{origin}: request failed: {type(e).__name__}: {travel._scrub(str(e))}")
                     continue

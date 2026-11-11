@@ -16,7 +16,7 @@ from django.conf import settings
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 
 # imports from project
 from orders.services.scrapers.browser import (
@@ -122,7 +122,7 @@ def _click_save_changes(wait, committed=None):
 def _try_cancel(driver):
     try:
         driver.find_element(By.XPATH, _CANCEL_XPATH).click()
-    except Exception:
+    except WebDriverException:
         pass
 
 
@@ -205,7 +205,7 @@ def pull_from_chiles(driver, wait, order_id: str):
                 try:
                     modal_el = driver.find_element(By.XPATH, '//div[@role="dialog"]')
                     remove_btns = modal_el.find_elements(By.CLASS_NAME, "c420")
-                except Exception:
+                except WebDriverException:
                     remove_btns = []
 
                 if is_split:
@@ -223,7 +223,7 @@ def pull_from_chiles(driver, wait, order_id: str):
                                     chiles_idx = i
                                 elif "Closing Shift" in row_text or "Starting Shift" in row_text:
                                     shift_idx = i
-                            except Exception:
+                            except WebDriverException:
                                 pass
                     if chiles_idx is not None and shift_idx is not None:
                         shift_input = driver.find_element(By.ID, f"packagequantities[{shift_idx}].nfrompackagequantity")
@@ -286,7 +286,7 @@ def pull_from_chiles(driver, wait, order_id: str):
                         time.sleep(1)
                         try:
                             remove_btn = wait.until(EC.element_to_be_clickable((By.XPATH, '//*[@id="root"]/div/div/main/div[2]/div/div/form/div[2]/span/div/div[2]/table/tbody/tr/td[11]/span/button')))
-                        except Exception:
+                        except WebDriverException:
                             continue
                         committed.append(True)
                         remove_btn.click()
@@ -360,7 +360,7 @@ def _fill_autocomplete(driver, wait, input_el, value: str):
 
     try:
         options = wait.until(EC.presence_of_all_elements_located((By.XPATH, '//*[@role="option"]')))
-    except Exception:
+    except WebDriverException:
         options = []
 
     exact = _option_with_text(options, value)
@@ -445,7 +445,7 @@ def _find_existing_product(driver, wait, name: str) -> Optional[str]:
     for row in driver.find_elements(By.XPATH, '//table/tbody/tr'):
         try:
             candidate = row.find_element(By.XPATH, './td[3]//a').text.strip()
-        except Exception:
+        except WebDriverException:
             continue
         ratio = difflib.SequenceMatcher(None, target, _normalize_product_name(candidate)).ratio()
         if ratio > best_ratio:

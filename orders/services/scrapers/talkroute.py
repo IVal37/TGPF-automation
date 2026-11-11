@@ -5,6 +5,7 @@ import time
 from django.conf import settings
 
 # imports from selenium
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -28,7 +29,7 @@ def send_message(customer_number: str, dispatch_msg: str, order_ref=None):
             fill(wait, (By.ID, "login-page-email-input"), settings.TALKROUTE_EMAIL)
             fill(wait, (By.ID, "login-page-password-input"), settings.TALKROUTE_PASSWORD)
             click(wait, (By.ID, "login-page-login-button"))
-        except Exception:
+        except WebDriverException:
             pass
 
         # get through setup menu
@@ -38,7 +39,7 @@ def send_message(customer_number: str, dispatch_msg: str, order_ref=None):
             click(wait, (By.CSS_SELECTOR, "label[for='modal-terms-checkbox']"))
             click(wait, (By.CLASS_NAME, "button.modal-accept-button:not(.initialModalButton)"))
             click(wait, (By.XPATH, ".//button[normalize-space()='OK']"))
-        except Exception:
+        except WebDriverException:
             pass
 
         # send message

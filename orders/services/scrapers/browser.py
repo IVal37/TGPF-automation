@@ -11,7 +11,7 @@ from django.conf import settings
 
 # imports from selenium
 from selenium import webdriver
-from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException, WebDriverException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
@@ -82,7 +82,7 @@ def scroll_into_view(driver, el):
 def click_with_js_fallback(driver, el):
     try:
         el.click()
-    except Exception:
+    except WebDriverException:
         driver.execute_script("arguments[0].click();", el)
 
 

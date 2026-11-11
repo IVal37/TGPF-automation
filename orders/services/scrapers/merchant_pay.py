@@ -12,6 +12,7 @@ from orders.services.scrapers.browser import browser_session, click, fill, scrol
 from orders.services.scrapers.merchant_pay_helper import fetch_2fa_code
 
 # imports from selenium
+from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -23,7 +24,7 @@ def send_merchant_pay_link():
             fill(wait, (By.ID, "mat-input-0"), settings.MERCHANT_PAY_EMAIL)
             fill(wait, (By.ID, "mat-input-1"), settings.MERCHANT_PAY_PASSWORD)
             click(wait, (By.XPATH, "/html/body/app-root/app-login-page/app-login/app-not-auth/div/section/form/button"))
-        except Exception:
+        except WebDriverException:
             pass
 
         try:

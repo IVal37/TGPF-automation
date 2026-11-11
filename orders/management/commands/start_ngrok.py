@@ -1,9 +1,10 @@
 # imports from std lib
-import subprocess
 import atexit
-import requests
+import subprocess
 import time
-import json
+
+# imports from third party
+import requests
 
 # imports from django
 from django.conf import settings
@@ -11,6 +12,11 @@ from django.core.management.base import BaseCommand
 
 # imports from project
 from orders.services.scrapers.webjoint import set_webhooks
+
+
+NGROK_API_TIMEOUT = 10  # seconds
+# ngrok needs a few seconds before its API lists the new tunnel
+TUNNEL_STARTUP_SECONDS = 5
 
 
 def start_ngrok():
@@ -23,7 +29,7 @@ def start_ngrok():
     )
     atexit.register(lambda: (ngrok_process.poll() is None) and ngrok_process.terminate())
 
-    time.sleep(5)
+    time.sleep(TUNNEL_STARTUP_SECONDS)
 
     url = get_endpoint_link()
     set_webhooks(url)
@@ -39,9 +45,12 @@ def get_endpoint_link() -> str:
         "ngrok-version": "2",
         "Authorization": f"Bearer {token}",
     }
-    response = requests.get(url, headers=headers)
-    response_dict = json.loads(response.text)
-    return response_dict["endpoints"][0]["public_url"]
+    response = requests.get(url, headers=headers, timeout=NGROK_API_TIMEOUT)
+    response.raise_for_status()
+    endpoints = response.json()["endpoints"]
+    if not endpoints:
+        raise ValueError("ngrok reports no running endpoint (did the tunnel start?)")
+    return endpoints[0]["public_url"]
 
 
 class Command(BaseCommand):
