@@ -1,8 +1,8 @@
 # imports from project
 from orders.constants import CARD_FEE_MULTIPLIER, PaymentType
-from orders.services.dispatch import get_effective_total, is_weedmaps_source
-from orders.services.money import round_money
+from orders.services.pricing import effective_total, round_money
 from orders.services.time import format_time
+from orders.services.webhook_payload import is_weedmaps_source
 
 # builds order-notes text for WebJoint from an Order model instance.
 # reads payment_type/total/eta directly off the order, so the caller is
@@ -11,7 +11,7 @@ from orders.services.time import format_time
 def get_order_notes(order):
     is_wm = is_weedmaps_source(order.source)
     payment_type = order.payment_type
-    debit_total = round_money(get_effective_total(order) * CARD_FEE_MULTIPLIER)
+    debit_total = round_money(effective_total(order) * CARD_FEE_MULTIPLIER)
 
     if payment_type == PaymentType.CASH:
         first_line = "WM says cash" if is_wm else "cash"

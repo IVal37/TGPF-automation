@@ -90,12 +90,6 @@ class Order(models.Model):
     last_error_after_commit = models.BooleanField(default=False)
     # placeholder order (city only) that tracks where a driver is heading
     is_shell = models.BooleanField(default=False)
-    # completed / dispatch_sent / is_storefront are kept written in step with
-    # status for one release (so a rollback still works) but are never read:
-    # use status and is_shell
-    completed = models.BooleanField(default=False)
-    dispatch_sent = models.BooleanField(default=False)
-    is_storefront = models.BooleanField(default=False)
     # restock tab: a completed delivery order is "reconciled" once the dispatcher
     # ticks it under Restock Time (its items join the restock list), and
     # "cleared" once Complete Restock empties that list

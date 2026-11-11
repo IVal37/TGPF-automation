@@ -13,21 +13,15 @@ from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.test import RequestFactory, SimpleTestCase, TestCase, TransactionTestCase, override_settings
 
-from orders.services.dispatch import (
-    extract_msg_info,
-    get_dispatch_msg,
-    normal_dispatch_msg,
-    under_min_msg,
-    get_adjusted_total,
-    get_effective_total,
-    is_fsa_fsm,
-    min_check_total,
-)
-from orders import views as orders_views
 from orders.models import Driver, Order
-from orders.services import queries
-from orders.services.engine import add_driver, add_order, complete_order, get_driver_city_queues
+from orders.services import dashboard, queries, restock
+from orders.services.customer_texts import render_dispatch_text, under_min_text
+from orders.services.customers import is_fsa_fsm
+from orders.services.engine import add_driver, add_order, complete_order
 from orders.services.eta import get_eta
+from orders.services.pricing import adjusted_total, effective_total, is_under_min, min_check_total
+from orders.services.queries import get_driver_city_queues
+from orders.services.webhook_payload import InvalidPayload, parse_new_order
 
 def _as_dispatcher(request):
     """The dashboard views are @login_required; give a RequestFactory request a
@@ -85,179 +79,186 @@ POS_ORDER = {k: v for k, v in SAMPLE_ORDER.items() if k != "weedmapsOrderId"}
 POS_ORDER["source"] = "POS"
 
 
-def _msg(**overrides):
-    """Build a msg_dict as extract_msg_info would produce, with optional overrides."""
-    base = {
-        "id": "6767008",
-        "city": "Davis",
-        "name": "Hailey",
-        "last_name": "White",
-        "phone": "15307239356",
-        "pay_type": "Cash",
-        "discount": Decimal("13.20"),
-        "sub_total": Decimal("65.98"),
-        "total": Decimal("77.25"),
-        "source": "Website",
-    }
-    base.update(overrides)
-    return base
+# ── parse_new_order ───────────────────────────────────────────────────────────
 
-
-# ── extract_msg_info ──────────────────────────────────────────────────────────
-
-class TestExtractMsgInfo(SimpleTestCase):
+class TestParseNewOrder(SimpleTestCase):
     def setUp(self):
-        self.result = extract_msg_info(SAMPLE_ORDER)
+        self.result = parse_new_order(SAMPLE_ORDER)
 
     def test_id_is_string(self):
-        self.assertEqual(self.result["id"], "6767008")
-        self.assertIsInstance(self.result["id"], str)
+        self.assertEqual(self.result.order_id, "6767008")
+        self.assertIsInstance(self.result.order_id, str)
 
-    def test_first_and_last_name(self):
-        self.assertEqual(self.result["name"], "Hailey")
-        self.assertEqual(self.result["last_name"], "White")
+    def test_customer_name(self):
+        self.assertEqual(self.result.customer_name, "Hailey White")
 
     def test_phone_strips_leading_plus(self):
-        self.assertEqual(self.result["phone"], "15307239356")
+        self.assertEqual(self.result.phone, "15307239356")
 
     def test_payment_type_from_payments_array(self):
-        self.assertEqual(self.result["pay_type"], "Cash")
+        self.assertEqual(self.result.payment_type, "Cash")
 
-    def test_discount_is_rounded_decimal(self):
-        self.assertEqual(self.result["discount"], Decimal("13.20"))
-        self.assertIsInstance(self.result["discount"], Decimal)
+    def test_money_fields_are_decimals(self):
+        self.assertEqual(self.result.discount, Decimal("13.2"))
+        self.assertEqual(self.result.subtotal, Decimal("65.98"))
+        self.assertEqual(self.result.total, Decimal("77.25"))
+        self.assertEqual(self.result.delivery_fee, Decimal("0"))
 
-    def test_total_is_rounded_decimal(self):
-        self.assertEqual(self.result["total"], Decimal("77.25"))
-        self.assertIsInstance(self.result["total"], Decimal)
+    def test_city_source_and_ids(self):
+        self.assertEqual(self.result.city, "Davis")
+        self.assertEqual(self.result.source, "External")
+        self.assertEqual(self.result.webjoint_id, WJ_ID)
+        self.assertEqual(self.result.weedmaps_order_id, "49018286")
 
-    def test_city_from_shipping(self):
-        self.assertEqual(self.result["city"], "Davis")
+    def test_items_come_from_details(self):
+        self.assertEqual(len(self.result.items), 2)
 
-    def test_source_field(self):
-        self.assertEqual(self.result["source"], "External")
+    def test_not_scheduled_by_default(self):
+        self.assertIsNone(self.result.scheduled_start)
+        self.assertIsNone(self.result.scheduled_end)
+        self.assertFalse(self.result.is_pending)
+
+    def test_scheduled_window_is_parsed(self):
+        cart = {"deliveryTiming": "Scheduled", "scheduledStart": "2025-12-08T18:00:00Z", "scheduledEnd": "2025-12-08T19:00:00Z"}
+        result = parse_new_order(dict(SAMPLE_ORDER, cart=cart, status="Pending"))
+        self.assertEqual(result.scheduled_end - result.scheduled_start, timedelta(hours=1))
+        self.assertTrue(result.is_pending)
+
+    def test_asap_cart_has_no_scheduled_window(self):
+        cart = {"deliveryTiming": "ASAP", "scheduledStart": "2025-12-08T18:00:00Z", "scheduledEnd": "2025-12-08T19:00:00Z"}
+        self.assertIsNone(parse_new_order(dict(SAMPLE_ORDER, cart=cart)).scheduled_start)
+
+    def test_a_storefront_style_body_without_phone_or_city_still_parses(self):
+        body = {k: v for k, v in SAMPLE_ORDER.items() if k not in ("shipping",)}
+        body["customer"] = {"name": "Walk In"}
+        result = parse_new_order(body)
+        self.assertEqual((result.city, result.phone), ("", ""))
+        with self.assertRaises(InvalidPayload):
+            result.require_delivery_fields()
+
+    def test_missing_or_unreadable_fields_are_rejected(self):
+        without = lambda key: {k: v for k, v in SAMPLE_ORDER.items() if k != key}
+        bad_bodies = {
+            "no id": without("id"),
+            "no created": without("created"),
+            "no customer": without("customer"),
+            "no customer name": dict(SAMPLE_ORDER, customer={"phone": "+1530"}),
+            "bad timestamp": dict(SAMPLE_ORDER, created="yesterday"),
+            "bad number": dict(SAMPLE_ORDER, total="lots"),
+            "not an object": ["a list"],
+        }
+        for label, body in bad_bodies.items():
+            with self.subTest(label), self.assertRaises(InvalidPayload):
+                parse_new_order(body)
+
+    def test_a_null_payment_method_does_not_crash(self):
+        body = dict(SAMPLE_ORDER, payments=[{"paymentMethod": None}])
+        self.assertEqual(parse_new_order(body).payment_type, "")
 
 
 # ── min_check_total ──────────────────────────────────────────────────────
 
-class Testmin_check_total(SimpleTestCase):
+class TestMinCheckTotal(SimpleTestCase):
     def test_subtracts_discount_from_subtotal(self):
-        self.assertEqual(
-            min_check_total(_msg(sub_total=Decimal("65.98"), discount=Decimal("13.20"))),
-            Decimal("52.78"),
-        )
+        self.assertEqual(min_check_total(Decimal("65.98"), Decimal("13.20")), Decimal("52.78"))
 
     def test_zero_discount(self):
-        self.assertEqual(
-            min_check_total(_msg(sub_total=50.00, discount=Decimal("0"))),
-            Decimal("50.00"),
-        )
+        self.assertEqual(min_check_total(50.00, Decimal("0")), Decimal("50.00"))
 
 
-# ── get_adjusted_total ────────────────────────────────────────────────────────
+# ── adjusted_total ────────────────────────────────────────────────────────
 
-class TestGetAdjustedTotal(SimpleTestCase):
+class TestAdjustedTotal(SimpleTestCase):
     def test_cash_unchanged(self):
-        self.assertEqual(get_adjusted_total(Decimal("77.25"), "Cash"), Decimal("77.25"))
+        self.assertEqual(adjusted_total(Decimal("77.25"), "Cash"), Decimal("77.25"))
 
     def test_card_adds_three_percent(self):
-        self.assertEqual(get_adjusted_total(Decimal("100.00"), "Debit / Tap-to-pay"), Decimal("103.00"))
+        self.assertEqual(adjusted_total(Decimal("100.00"), "Debit / Tap-to-pay"), Decimal("103.00"))
 
     def test_merchant_pay_ach_adds_fee(self):
-        result = get_adjusted_total(Decimal("100.00"), "Merchant Pay - ACH")
+        result = adjusted_total(Decimal("100.00"), "Merchant Pay - ACH")
         expected = Decimal("100.00") + Decimal("100.00") * Decimal("0.0225") + Decimal("0.35")
         self.assertEqual(result, expected)
 
 
-# ── under_min_msg ─────────────────────────────────────────────────────────────
+# ── under_min_text ────────────────────────────────────────────────────────────
+# (city minimums come from the database; the seed migration has Woodland $35, Guinda $250, Davis $25)
 
-class TestUnderMinMsg(SimpleTestCase):
+class TestUnderMinText(TestCase):
+    def _text(self, city="Woodland", subtotal="30.00", discount="0"):
+        return under_min_text("Hailey", city, Decimal(subtotal), Decimal(discount))
+
     def test_suggests_adding_when_close_to_minimum(self):
-        msg = under_min_msg(_msg(city="Woodland"), Decimal("35.00"), Decimal("30.00"))
-        self.assertIn("Could we add something", msg)
+        self.assertIn("Could we add something", self._text())
 
     def test_cancels_when_far_below_large_minimum(self):
-        # Guinda min=250, order=50 → diff=200 > half of 250 → cancel
-        msg = under_min_msg(_msg(city="Guinda"), Decimal("250.00"), Decimal("50.00"))
-        self.assertIn("cancel", msg)
+        # Guinda min=250, order=50 -> diff=200 > half of 250 -> cancel
+        self.assertIn("cancel", self._text(city="Guinda", subtotal="50.00"))
 
     def test_dollar_sign_before_order_amount(self):
-        msg = under_min_msg(_msg(city="Woodland"), Decimal("35.00"), Decimal("30.00"))
-        self.assertIn("$30.00", msg)
+        self.assertIn("$30.00", self._text())
 
     def test_dollar_sign_before_city_minimum(self):
-        msg = under_min_msg(_msg(city="Woodland"), Decimal("35.00"), Decimal("30.00"))
-        self.assertIn("$35.00", msg)
+        self.assertIn("$35.00", self._text())
 
     def test_greeting_uses_first_name(self):
-        msg = under_min_msg(_msg(), Decimal("35.00"), Decimal("30.00"))
-        self.assertIn("Hi Hailey", msg)
+        self.assertIn("Hi Hailey", self._text())
 
     def test_city_name_in_body(self):
-        msg = under_min_msg(_msg(city="Woodland"), Decimal("35.00"), Decimal("30.00"))
-        self.assertIn("Woodland", msg)
+        self.assertIn("Woodland", self._text())
+
+    def test_discount_comes_off_the_amount_shown(self):
+        self.assertIn("$20.00", self._text(subtotal="30.00", discount="10.00"))
 
 
-# ── normal_dispatch_msg ───────────────────────────────────────────────────────
+# ── render_dispatch_text ──────────────────────────────────────────────────────
 
-class TestNormalDispatchMsg(TestCase):  # config (city minimums, flagged customers, special addresses) is read from the database
-    def _eta(self):
-        return patch("orders.services.dispatch.get_eta", return_value=("2:30", "3:30"))
+class TestRenderDispatchText(TestCase):  # flagged customers (merchant pay) are read from the database
+    def _render(self, name="Hailey", last_name="White", payment_type="Cash"):
+        return render_dispatch_text(
+            name, last_name, Decimal("13.20"), Decimal("77.25"), payment_type, "2:30", "3:30",
+        )
 
     def test_shows_eta_window(self):
-        with self._eta():
-            msg = normal_dispatch_msg(_msg())
+        msg = self._render()
         self.assertIn("between 2:30-3:30", msg)
         self.assertIn("$77.25", msg)
         self.assertNotIn("card fee", msg)
 
     def test_no_double_space_in_driver_sentence(self):
-        with self._eta():
-            msg = normal_dispatch_msg(_msg())
-        self.assertNotIn("  ", msg)
+        self.assertNotIn("  ", self._render())
 
     def test_debit_card_shows_fee_text_and_adjusted_total(self):
-        with self._eta():
-            msg = normal_dispatch_msg(_msg(pay_type="Debit / Tap-to-pay"))
+        msg = self._render(payment_type="Debit / Tap-to-pay")
         self.assertIn("including card fee", msg)
-        self.assertIn("$79.57", msg)  # 77.25 * 1.03 = 79.5675 → rounds to 79.57
+        self.assertIn("$79.57", msg)  # 77.25 * 1.03 = 79.5675 -> rounds to 79.57
 
     def test_merchant_pay_customer_gets_link_notice_and_fee_text(self):
-        with self._eta():
-            msg = normal_dispatch_msg(_msg(
-                name="Imran", last_name="Rahim", pay_type="Merchant Pay - ACH"
-            ))
+        msg = self._render(name="Imran", last_name="Rahim", payment_type="Merchant Pay - ACH")
         self.assertIn("merchant pay link", msg)
         self.assertIn("including Merchant Pay fee", msg)
 
     def test_non_merchant_pay_customer_has_no_link_notice(self):
-        with self._eta():
-            msg = normal_dispatch_msg(_msg())
-        self.assertNotIn("merchant pay link", msg)
+        self.assertNotIn("merchant pay link", self._render())
 
-# ── get_dispatch_msg routing ──────────────────────────────────────────────────
 
-class TestGetDispatchMsgRouting(TestCase):  # config (city minimums, flagged customers, special addresses) is read from the database
-    def _eta(self):
-        return patch("orders.services.dispatch.get_eta", return_value=("2:30", "3:30"))
+# ── is_under_min ──────────────────────────────────────────────────────────────
 
-    def test_above_minimum_produces_normal_message(self):
-        # Davis min=$25; 65.98 - 13.20 = 52.78 → above minimum
-        with self._eta():
-            msg = get_dispatch_msg(_msg())
-        self.assertIn("thank you for your order", msg)
-        self.assertNotIn("minimum", msg)
+class TestIsUnderMin(TestCase):  # city minimums are read from the database
+    def test_above_minimum(self):
+        # Davis min=$25; 65.98 - 13.20 = 52.78
+        self.assertFalse(is_under_min(Decimal("65.98"), Decimal("13.20"), "Davis"))
 
-    def test_below_minimum_produces_under_min_message(self):
-        # Guinda min=$250; 30.00 - 0 = 30.00 → below minimum
-        msg = get_dispatch_msg(_msg(city="Guinda", sub_total=30.00, discount=Decimal("0")))
-        self.assertIn("minimum", msg)
-        self.assertIn("$250.00", msg)
+    def test_below_minimum(self):
+        # Guinda min=$250
+        self.assertTrue(is_under_min(30.00, Decimal("0"), "Guinda"))
 
-    def test_exactly_at_minimum_triggers_under_min(self):
-        # Davis min=$25; 25.00 is not > 25.00 → under_min path
-        msg = get_dispatch_msg(_msg(city="Davis", sub_total=25.00, discount=Decimal("0")))
-        self.assertIn("minimum", msg)
+    def test_exactly_at_minimum_counts_as_under(self):
+        # Davis min=$25; 25.00 is not > 25.00
+        self.assertTrue(is_under_min(25.00, Decimal("0"), "Davis"))
+
+    def test_a_city_with_no_minimum_is_never_under(self):
+        self.assertFalse(is_under_min(1, Decimal("0"), "Nowhere"))
 
 
 # ── new_order view ────────────────────────────────────────────────────────────
@@ -273,35 +274,36 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
             content_type="application/json",
         )
 
+    # the browser tasks are patched where they are defined; everything else where intake uses it
+    TASK_NAMES = (
+        "fill_order_notes_task", "prepare_order_task", "resolve_payment_type_task",
+        "send_message_task", "send_merchant_pay_link_task",
+    )
+
     def _run(self, payload=None, **overrides):
-        """Runs new_order with every external side effect (DB writes, scrapers, texting)
-        mocked out, so tests can exercise the view's own orchestration in isolation.
-        Pass e.g. extract_msg_info={"return_value": {...}} to override a default.
+        """Runs the new_order view with every external side effect (DB writes, scrapers, texting)
+        mocked out, so tests can exercise the intake orchestration in isolation.
+        Pass e.g. is_under_min={"return_value": True} to override a default.
         Returns (response, {patch_target_name: mock})."""
         defaults = {
             "add_order": {},
             "add_storefront_order": {},
             # Order is mocked, so the duplicate-webhook check must say "not seen yet"
             "Order": {"objects.filter.return_value.exists.return_value": False},
-            "extract_msg_info": {"return_value": {
-                "id": "6767008", "name": "Hailey", "last_name": "White",
-                "phone": "15307239356", "pay_type": "Cash", "source": "POS",
-            }},
-            "get_dispatch_msg": {"return_value": "msg"},
+            "estimate_window": {},
+            "under_min_text": {"return_value": "msg"},
             "is_under_min": {"return_value": False},
             "get_order_notes": {"return_value": "notes"},
-            "fill_order_notes_task": {},
-            "prepare_order_task": {},
-            "resolve_payment_type_task": {},
-            "send_message_task": {},
-            "send_merchant_pay_link_task": {},
+            **{name: {} for name in self.TASK_NAMES},
         }
         defaults.update(overrides)
 
         from orders.views import new_order
         with ExitStack() as stack:
             mocks = {
-                name: stack.enter_context(patch(f"orders.views.{name}", **kwargs))
+                name: stack.enter_context(patch(
+                    f"orders.tasks.{name}" if name in self.TASK_NAMES else f"orders.services.intake.{name}", **kwargs,
+                ))
                 for name, kwargs in defaults.items()
             }
             response = new_order(self._post(payload), key=settings.WEBHOOK_SECRET)
@@ -314,8 +316,8 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
     def test_full_chain_is_called(self):
         response, mocks = self._run()
         mocks["add_order"].assert_called_once()
-        mocks["extract_msg_info"].assert_called_once()
-        mocks["get_dispatch_msg"].assert_called_once()
+        mocks["estimate_window"].assert_called_once()
+        mocks["under_min_text"].assert_not_called()
         # normal (non-under-min) orders no longer text immediately — they sit in
         # the dispatch queue until a dispatcher approves/edits the ETA and sends
         mocks["send_message_task"].delay.assert_not_called()
@@ -341,7 +343,7 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
         _, mocks = self._run(payload=payload)
         mocks["add_storefront_order"].assert_called_once()
         mocks["add_order"].assert_not_called()
-        mocks["extract_msg_info"].assert_not_called()
+        mocks["estimate_window"].assert_not_called()
 
     def test_non_third_st_davis_order_still_dispatches_normally(self):
         # sanity check the routing isn't overbroad — an ordinary Davis delivery
@@ -382,7 +384,8 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
         mocks["resolve_payment_type_task"].delay.assert_called_once_with("6767008", write_notes=False)
         scraper.assert_not_called()
         task_scraper.assert_not_called()
-        self.assertFalse(hasattr(orders_views, "get_wm_payment_type"))
+        from orders import views
+        self.assertFalse(hasattr(views, "get_wm_payment_type"))
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_weedmaps_order_is_saved_with_empty_payment_type_and_its_weedmaps_id(self):
@@ -469,7 +472,7 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_webhook_without_webjoint_id_skips_webjoint_tasks_but_still_texts(self):
         payload = {k: v for k, v in SAMPLE_ORDER.items() if k != "_id"}
-        with self.assertLogs("orders.views", "WARNING") as logs:
+        with self.assertLogs("orders.services.intake", "WARNING") as logs:
             _, mocks = self._run(payload=payload, is_under_min={"return_value": True})
         self.assertEqual(mocks["add_order"].call_args.kwargs["webjoint_id"], "")
         mocks["send_message_task"].delay.assert_called_once_with("6767008", "15307239356", "msg")
@@ -485,23 +488,16 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_merchant_pay_customer_sends_link(self):
         # "Imran Rahim" is one of the three hardcoded MERCHANT_PAY_CUSTOMERS
-        _, mocks = self._run(extract_msg_info={"return_value": {
-            "id": "6767008", "name": "Imran", "last_name": "Rahim",
-            "phone": "15307239356", "pay_type": "Cash", "source": "POS",
-        }})
-        mocks["send_merchant_pay_link_task"].delay.assert_called_once()
+        payload = dict(POS_ORDER, customer={**POS_ORDER["customer"], "name": "Imran Rahim"})
+        _, mocks = self._run(payload=payload)
+        mocks["send_merchant_pay_link_task"].delay.assert_called_once_with("6767008")
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_merchant_pay_customer_under_min_does_not_send_link(self):
-        # the merchant-pay-link SMS line only appears in normal_dispatch_msg,
-        # never under_min_msg, so the link itself shouldn't send either
-        _, mocks = self._run(
-            extract_msg_info={"return_value": {
-                "id": "6767008", "name": "Imran", "last_name": "Rahim",
-                "phone": "15307239356", "pay_type": "Cash", "source": "POS",
-            }},
-            is_under_min={"return_value": True},
-        )
+        # the merchant-pay-link SMS line only appears in the normal dispatch text,
+        # never the under-min one, so the link itself shouldn't send either
+        payload = dict(POS_ORDER, customer={**POS_ORDER["customer"], "name": "Imran Rahim"})
+        _, mocks = self._run(payload=payload, is_under_min={"return_value": True})
         mocks["send_merchant_pay_link_task"].delay.assert_not_called()
 
 
@@ -537,10 +533,10 @@ class TestSendDispatchMsgView(TestCase):
         )
 
     @override_settings(RESTOCK_TEST_MODE=False)
-    def test_sends_message_with_edited_window_and_marks_dispatch_sent(self):
+    def test_sends_message_with_edited_window_and_marks_the_order_sending(self):
         from orders.views import send_dispatch_msg_view
-        with patch("orders.views.send_message_task") as mock_send_task, \
-             patch("orders.views.fill_order_notes_task") as mock_notes_task:
+        with patch("orders.tasks.send_message_task") as mock_send_task, \
+             patch("orders.tasks.fill_order_notes_task") as mock_notes_task:
             request = self.factory.post("/send_dispatch_msg", {
                 "order_id": "9001", "eta_start": "14:45", "eta_end": "15:45",
             })
@@ -555,7 +551,7 @@ class TestSendDispatchMsgView(TestCase):
         self.assertEqual(mock_notes_task.delay.call_args.args[0], "1111-2222-3333333-9001")
 
         self.order.refresh_from_db()
-        self.assertTrue(self.order.dispatch_sent)
+        self.assertEqual(self.order.status, Order.Status.SENDING)
         self.assertEqual(self.order.eta_start, datetime(2026, 7, 20, 14, 45, 0))
         self.assertEqual(self.order.eta_end, datetime(2026, 7, 20, 15, 45, 0))
 
@@ -563,9 +559,9 @@ class TestSendDispatchMsgView(TestCase):
     def test_order_without_webjoint_id_is_texted_but_note_is_skipped(self):
         from orders.views import send_dispatch_msg_view
         Order.objects.filter(order_id="9001").update(webjoint_id="")
-        with patch("orders.views.send_message_task") as mock_send_task, \
-             patch("orders.views.fill_order_notes_task") as mock_notes_task, \
-             self.assertLogs("orders.views", "WARNING") as logs:
+        with patch("orders.tasks.send_message_task") as mock_send_task, \
+             patch("orders.tasks.fill_order_notes_task") as mock_notes_task, \
+             self.assertLogs("orders.services.dispatch_queue", "WARNING") as logs:
             request = self.factory.post("/send_dispatch_msg", {
                 "order_id": "9001", "eta_start": "14:45", "eta_end": "15:45",
             })
@@ -578,7 +574,7 @@ class TestSendDispatchMsgView(TestCase):
     @override_settings(RESTOCK_TEST_MODE=True)
     def test_test_mode_marks_sent_without_texting(self):
         from orders.views import send_dispatch_msg_view
-        with patch("orders.views.send_message_task") as mock_send_task:
+        with patch("orders.tasks.send_message_task") as mock_send_task:
             request = self.factory.post("/send_dispatch_msg", {
                 "order_id": "9001", "eta_start": "14:30", "eta_end": "15:30",
             })
@@ -586,13 +582,12 @@ class TestSendDispatchMsgView(TestCase):
 
         mock_send_task.delay.assert_not_called()
         self.order.refresh_from_db()
-        self.assertTrue(self.order.dispatch_sent)
+        self.assertEqual(self.order.status, Order.Status.SENT)
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_already_sent_order_is_not_resent(self):
         # guards against double-clicking Send and texting the customer twice
         from orders.views import send_dispatch_msg_view
-        self.order.dispatch_sent = True
         self.order.status = Order.Status.SENT
         self.order.save()
         request = self.factory.post("/send_dispatch_msg", {
@@ -624,10 +619,10 @@ class TestSendRescheduleMsgView(TestCase):
         )
 
     @override_settings(RESTOCK_TEST_MODE=False)
-    def test_sends_reschedule_and_marks_dispatch_sent(self):
+    def test_sends_reschedule_and_marks_the_order_sending(self):
         from orders.views import send_reschedule_msg_view
-        with patch("orders.views.send_message_task") as mock_send_task, \
-             patch("orders.views.fill_order_notes_task") as mock_notes_task:
+        with patch("orders.tasks.send_message_task") as mock_send_task, \
+             patch("orders.tasks.fill_order_notes_task") as mock_notes_task:
             request = self.factory.post("/send_reschedule_msg", {"order_id": "9002"})
             response = send_reschedule_msg_view(_as_dispatcher(request))
 
@@ -639,7 +634,7 @@ class TestSendRescheduleMsgView(TestCase):
         )
 
         self.order.refresh_from_db()
-        self.assertTrue(self.order.dispatch_sent)
+        self.assertEqual(self.order.status, Order.Status.SENDING)
 
 
 # ── FSA/FSM legal-limit split linking ───────────────────────────────────────────
@@ -661,7 +656,7 @@ class TestGetEffectiveTotal(TestCase):
             order_date=datetime(2026, 7, 20, 14, 0, 0),
             total=Decimal("50.00"), delivery_fee=Decimal("5.00"),
         )
-        self.assertEqual(get_effective_total(order), Decimal("50.00"))
+        self.assertEqual(effective_total(order), Decimal("50.00"))
 
     def test_linked_companion_with_matching_fees(self):
         primary = Order.objects.create(
@@ -675,7 +670,7 @@ class TestGetEffectiveTotal(TestCase):
             total=Decimal("30.00"), delivery_fee=Decimal("5.00"),
             linked_order=primary,
         )
-        self.assertEqual(get_effective_total(primary), Decimal("75.00"))  # 50 + 30 - 5
+        self.assertEqual(effective_total(primary), Decimal("75.00"))  # 50 + 30 - 5
 
     def test_linked_companion_with_mismatched_fees_subtracts_lower(self):
         primary = Order.objects.create(
@@ -689,7 +684,7 @@ class TestGetEffectiveTotal(TestCase):
             total=Decimal("30.00"), delivery_fee=Decimal("5.00"),
             linked_order=primary,
         )
-        self.assertEqual(get_effective_total(primary), Decimal("75.00"))  # 50 + 30 - min(7,5)
+        self.assertEqual(effective_total(primary), Decimal("75.00"))  # 50 + 30 - min(7,5)
 
 
 class TestCombinedTotalInMessaging(TestCase):
@@ -709,7 +704,7 @@ class TestCombinedTotalInMessaging(TestCase):
         )
 
     def test_dispatch_msg_uses_combined_total(self):
-        from orders.services.dispatch import build_dispatch_msg_from_order
+        from orders.services.customer_texts import dispatch_text as build_dispatch_msg_from_order
         msg = build_dispatch_msg_from_order(self.primary)
         self.assertIn("$75.00", msg)  # 50 + 30 - 5, Cash -> unchanged
 
@@ -740,7 +735,7 @@ class TestLinkOrderView(TestCase):
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_links_companion_and_writes_note(self):
         from orders.views import link_order_view
-        with patch("orders.views.fill_order_notes_task") as mock_notes_task:
+        with patch("orders.tasks.fill_order_notes_task") as mock_notes_task:
             request = self.factory.post("/link_order", {
                 "order_id": "l2", "primary_order_id": "l1",
             })
@@ -749,7 +744,7 @@ class TestLinkOrderView(TestCase):
         self.assertEqual(response.status_code, 302)
         self.companion.refresh_from_db()
         self.assertEqual(self.companion.linked_order_id, self.primary.pk)
-        self.assertTrue(self.companion.dispatch_sent)
+        self.assertEqual(self.companion.status, Order.Status.SENT)
         # the note is written on the companion's WebJoint order, not the primary's
         mock_notes_task.delay.assert_called_once_with(
             "1111-2222-5555555-1002", "second part of Jane Doe's order",
@@ -768,10 +763,9 @@ class TestLinkOrderView(TestCase):
         link_order_view(_as_dispatcher(request))
         other.refresh_from_db()
         self.assertIsNone(other.linked_order)
-        self.assertFalse(other.dispatch_sent)
+        self.assertEqual(other.status, Order.Status.AWAITING_APPROVAL)
 
     def test_rejects_when_primary_already_sent(self):
-        self.primary.dispatch_sent = True
         self.primary.status = Order.Status.SENT
         self.primary.save()
         from orders.views import link_order_view
@@ -791,7 +785,7 @@ class TestUnlinkOrderView(TestCase):
         companion = Order.objects.create(
             order_id="u2", customer_name="Frank Sinatra Medical", city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            linked_order=primary, dispatch_sent=True, status=Order.Status.SENT,
+            linked_order=primary, status=Order.Status.SENT,
         )
         from orders.views import unlink_order_view
         factory = RequestFactory()
@@ -801,11 +795,11 @@ class TestUnlinkOrderView(TestCase):
         self.assertEqual(response.status_code, 302)
         companion.refresh_from_db()
         self.assertIsNone(companion.linked_order)
-        self.assertFalse(companion.dispatch_sent)
+        self.assertEqual(companion.status, Order.Status.AWAITING_PAYMENT)  # it has no payment type
 
 
 class TestClearDispatchQueueView(TestCase):
-    def test_marks_all_pending_orders_dispatch_sent_without_texting(self):
+    def test_marks_all_pending_orders_sent_without_texting(self):
         Order.objects.create(
             order_id="c1", customer_name="Jane Doe", city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
@@ -824,8 +818,8 @@ class TestClearDispatchQueueView(TestCase):
 
         from orders.views import clear_dispatch_queue_view
         factory = RequestFactory()
-        with patch("orders.views.send_message_task") as mock_send_task, \
-             patch("orders.views.fill_order_notes_task") as mock_notes_task:
+        with patch("orders.tasks.send_message_task") as mock_send_task, \
+             patch("orders.tasks.fill_order_notes_task") as mock_notes_task:
             request = factory.post("/clear_dispatch_queue")
             response = clear_dispatch_queue_view(_as_dispatcher(request))
 
@@ -833,9 +827,9 @@ class TestClearDispatchQueueView(TestCase):
         mock_send_task.delay.assert_not_called()
         mock_notes_task.delay.assert_not_called()
 
-        self.assertTrue(Order.objects.get(order_id="c1").dispatch_sent)
-        self.assertTrue(Order.objects.get(order_id="c2").dispatch_sent)
-        self.assertFalse(Order.objects.get(order_id="c3").dispatch_sent)
+        self.assertEqual(Order.objects.get(order_id="c1").status, Order.Status.SENT)
+        self.assertEqual(Order.objects.get(order_id="c2").status, Order.Status.SENT)
+        self.assertNotEqual(Order.objects.get(order_id="c3").status, Order.Status.SENT)
 
 
 class TestPendingOrdersFsaFsm(TestCase):
@@ -850,13 +844,12 @@ class TestPendingOrdersFsaFsm(TestCase):
             order_id="p2", customer_name="Frank Sinatra Adult", city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
             eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
-            linked_order=primary, dispatch_sent=True, status=Order.Status.SENT,
+            linked_order=primary, status=Order.Status.SENT,
         )
-        from orders.views import _pending_orders
-        result = _pending_orders()
+        result = dashboard.pending_cards()
         order_ids = [item["order"].order_id for item in result]
         self.assertIn("p1", order_ids)
-        self.assertNotIn("p2", order_ids)  # absorbed — dispatch_sent=True filters it out
+        self.assertNotIn("p2", order_ids)  # absorbed: a linked companion has status "sent", so it is not in the queue
 
         primary_item = next(item for item in result if item["order"].order_id == "p1")
         self.assertEqual(primary_item["linked_companion"].order_id, "p2")
@@ -877,8 +870,7 @@ class TestPendingOrdersFsaFsm(TestCase):
             order_date=datetime(2026, 7, 20, 14, 0, 0),
             eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
         )
-        from orders.views import _pending_orders
-        result = _pending_orders()
+        result = dashboard.pending_cards()
         fsa_item = next(item for item in result if item["order"].order_id == "p4")
         self.assertTrue(fsa_item["is_fsa_fsm"])
         target_ids = [t.order_id for t in fsa_item["link_targets"]]
@@ -901,9 +893,7 @@ class TestAddStorefrontOrder(TestCase):
             items=[{"quantity": 2, "price": "10.00", "variant": {"product": {"name": "Widget"}}}],
         )
         order = Order.objects.get(order_id="s1")
-        self.assertTrue(order.is_storefront)
-        self.assertTrue(order.completed)
-        self.assertTrue(order.dispatch_sent)
+        self.assertEqual(order.status, Order.Status.STOREFRONT)
         self.assertIsNone(order.driver_id)
         self.assertIsNone(order.eta_start)
         self.assertEqual(order.items.count(), 1)
@@ -990,7 +980,7 @@ class TestAddProductsFromInvoiceView(SimpleTestCase):
         factory = RequestFactory()
         invoice_file = SimpleUploadedFile("invoice.pdf", b"fake pdf bytes", content_type="application/pdf")
         with patch("orders.views.extract_products_from_invoice", return_value=[{"name": "X"}]) as mock_extract, \
-             patch("orders.views.create_product_task") as mock_create_task:
+             patch("orders.tasks.create_product_task") as mock_create_task:
             request = factory.post("/add_products_from_invoice", {"invoice": invoice_file})
             response = add_products_from_invoice(_as_dispatcher(request))
         mock_extract.assert_called_once()
@@ -1091,18 +1081,16 @@ class TestDuplicateWebhook(TestCase):
         )
         with ExitStack() as stack:
             mocks = {
-                name: stack.enter_context(patch(f"orders.views.{name}"))
-                for name in (
-                    "add_order", "add_storefront_order", "get_dispatch_msg", "is_under_min",
-                    "prepare_order_task", "resolve_payment_type_task",
-                    "fill_order_notes_task", "send_message_task",
-                    "send_merchant_pay_link_task",
-                )
+                name: stack.enter_context(patch(f"orders.services.intake.{name}"))
+                for name in ("add_order", "add_storefront_order", "estimate_window", "under_min_text", "is_under_min")
             }
-            stack.enter_context(patch("orders.views.extract_msg_info", return_value={
-                "id": "6767008", "name": "Hailey", "last_name": "White",
-                "phone": "15307239356", "pay_type": "Cash", "source": "POS",
-            }))
+            mocks.update({
+                name: stack.enter_context(patch(f"orders.tasks.{name}"))
+                for name in (
+                    "prepare_order_task", "resolve_payment_type_task",
+                    "fill_order_notes_task", "send_message_task", "send_merchant_pay_link_task",
+                )
+            })
             mocks["is_under_min"].return_value = False
             response = new_order(request, key=settings.WEBHOOK_SECRET)
         return response, mocks
@@ -1114,7 +1102,7 @@ class TestDuplicateWebhook(TestCase):
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_duplicate_creates_one_order_and_queues_nothing(self):
         self._existing("6767008")
-        with self.assertLogs("orders.views", "INFO") as logs:
+        with self.assertLogs("orders.services.intake", "INFO") as logs:
             response, mocks = self._post(SAMPLE_ORDER)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(Order.objects.filter(order_id="6767008").count(), 1)
@@ -1158,8 +1146,8 @@ class TestSendDispatchPaymentGate(TestCase):
         request = self.factory.post("/send_dispatch_msg", {
             "order_id": "9001", "eta_start": "14:45", "eta_end": "15:45", **extra,
         })
-        with patch("orders.views.send_message_task") as send_task, \
-             patch("orders.views.fill_order_notes_task") as notes_task:
+        with patch("orders.tasks.send_message_task") as send_task, \
+             patch("orders.tasks.fill_order_notes_task") as notes_task:
             response = send_dispatch_msg_view(_as_dispatcher(request))
         self.order.refresh_from_db()
         return response, send_task, notes_task
@@ -1171,7 +1159,7 @@ class TestSendDispatchPaymentGate(TestCase):
         self.assertEqual(response.status_code, 302)
         send_task.delay.assert_not_called()
         notes_task.delay.assert_not_called()
-        self.assertFalse(self.order.dispatch_sent)
+        self.assertEqual(self.order.status, Order.Status.AWAITING_APPROVAL)
         self.assertEqual(self.order.payment_type, "")
         # the ETA edit isn't applied either: nothing about a refused send sticks
         self.assertEqual(self.order.eta_start, datetime(2026, 7, 20, 14, 30, 0))
@@ -1180,7 +1168,7 @@ class TestSendDispatchPaymentGate(TestCase):
     def test_send_as_cash_sets_cash_and_sends(self):
         _, send_task, notes_task = self._send(as_cash="1")
         self.assertEqual(self.order.payment_type, "Cash")
-        self.assertTrue(self.order.dispatch_sent)
+        self.assertEqual(self.order.status, Order.Status.SENDING)
         send_task.delay.assert_called_once()
         self.assertEqual(notes_task.delay.call_args.args[0], "1111-2222-3333333-9001")
         self.assertIn("WM says cash", notes_task.delay.call_args.args[1])
@@ -1192,14 +1180,14 @@ class TestSendDispatchPaymentGate(TestCase):
             _, send_task, _ = self._send(as_cash="1")
         send_task.delay.assert_not_called()
         self.assertEqual(self.order.payment_type, "Debit / Tap-to-pay")
-        self.assertFalse(self.order.dispatch_sent)
+        self.assertEqual(self.order.status, Order.Status.AWAITING_APPROVAL)
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_plain_send_works_once_the_type_has_resolved(self):
         Order.objects.filter(order_id="9001").update(payment_type="Debit / Tap-to-pay")
         _, send_task, _ = self._send()
         send_task.delay.assert_called_once()
-        self.assertTrue(self.order.dispatch_sent)
+        self.assertEqual(self.order.status, Order.Status.SENDING)
 
 
 class TestPendingOrdersCard(TestCase):
@@ -1355,7 +1343,7 @@ class TestRestockDigestsUseStatus(TestCase):
     def test_delivery_digest_excludes_cancelled_and_still_open_orders(self):
         from orders.tasks import _build_restock_message
         self._order("done", Order.Status.COMPLETED)
-        self._order("cancelled", Order.Status.CANCELLED, completed=True)
+        self._order("cancelled", Order.Status.CANCELLED)
         self._order("out", Order.Status.SENT)
         self._order("queued", Order.Status.AWAITING_APPROVAL)
         self.assertEqual(_build_restock_message(Order.Status.COMPLETED), "Gummy x1")
@@ -1396,7 +1384,6 @@ class TestEngineWritesStatus(TestCase):
         complete_order("a1")
         order = Order.objects.get(order_id="a1")
         self.assertEqual(order.status, Order.Status.COMPLETED)
-        self.assertTrue(order.completed)  # old boolean kept in step
         self.assertIsNone(order.driver)
 
     def test_cancel_sets_cancelled(self):
@@ -1405,7 +1392,6 @@ class TestEngineWritesStatus(TestCase):
         cancel_order("a1")
         order = Order.objects.get(order_id="a1")
         self.assertEqual(order.status, Order.Status.CANCELLED)
-        self.assertTrue(order.completed)  # old boolean kept in step
         self.assertNotIn("a1", [o.order_id for o in queries.open_orders()])
 
     def test_shell_is_created_sent_and_closed_completed(self):
@@ -1424,7 +1410,6 @@ class TestEngineWritesStatus(TestCase):
         add_storefront_order(order_id="s1", customer_name="Walk In", order_time=datetime.now())
         order = Order.objects.get(order_id="s1")
         self.assertEqual(order.status, Order.Status.STOREFRONT)
-        self.assertTrue(order.is_storefront and order.completed and order.dispatch_sent)
 
 
 class TestQueueUsesStatus(TestCase):
@@ -1439,21 +1424,20 @@ class TestQueueUsesStatus(TestCase):
         )
 
     def test_only_queue_statuses_show_in_the_queue(self):
-        from orders.views import _pending_queryset
         self._order("q1", Order.Status.AWAITING_APPROVAL)
         self._order("q2", Order.Status.AWAITING_PAYMENT, payment_type="")
         self._order("s1", Order.Status.SENT)
         self._order("c1", Order.Status.COMPLETED)
         self._order("x1", Order.Status.CANCELLED)
         self._order("sh", Order.Status.AWAITING_APPROVAL, is_shell=True)
-        ids = set(_pending_queryset().values_list("order_id", flat=True))
+        ids = set(queries.pending_orders().values_list("order_id", flat=True))
         self.assertEqual(ids, {"q1", "q2"})
 
-    def test_send_ignores_the_old_boolean_and_trusts_status(self):
+    def test_send_refuses_an_order_that_is_already_sent(self):
         from orders.views import send_dispatch_msg_view
-        self._order("s1", Order.Status.SENT, dispatch_sent=False)  # booleans disagree
+        self._order("s1", Order.Status.SENT)
         request = RequestFactory().post("/send_dispatch_msg", {"order_id": "s1"})
-        with patch("orders.views.send_message_task") as send_task, self.assertRaises(Http404):
+        with patch("orders.tasks.send_message_task") as send_task, self.assertRaises(Http404):
             send_dispatch_msg_view(_as_dispatcher(request))
         send_task.delay.assert_not_called()
 
@@ -1465,7 +1449,6 @@ class TestQueueUsesStatus(TestCase):
         send_dispatch_msg_view(_as_dispatcher(request))
         order = Order.objects.get(order_id="q1")
         self.assertEqual(order.status, Order.Status.SENT)
-        self.assertTrue(order.dispatch_sent)
 
     def test_unlink_puts_companion_back_in_the_queue(self):
         from orders.views import unlink_order_view
@@ -1474,7 +1457,6 @@ class TestQueueUsesStatus(TestCase):
         unlink_order_view(_as_dispatcher(RequestFactory().post("/unlink_order", {"order_id": "f1"})))
         companion = Order.objects.get(order_id="f1")
         self.assertEqual(companion.status, Order.Status.AWAITING_APPROVAL)
-        self.assertFalse(companion.dispatch_sent)
         self.assertIsNone(companion.linked_order)
 
     def test_unlink_keeps_send_held_when_payment_type_is_still_missing(self):
@@ -1503,6 +1485,7 @@ class TestQueueUsesStatus(TestCase):
 
 class TestNewOrderStatus(TestCase):  # config (city minimums, flagged customers, special addresses) is read from the database
     """The initial status new_order hands to add_order (reuses TestNewOrderView's mocks)."""
+    TASK_NAMES = TestNewOrderView.TASK_NAMES
     _run = TestNewOrderView._run
     _post = TestNewOrderView._post
 
@@ -1625,7 +1608,6 @@ class TestRestartKeepsEverything(DbTruthCase):
     """Simulates a restart: re-runs the startup loader and checks nothing was lost."""
 
     def _snapshot(self):
-        from orders.views import _restock_context, _pending_orders
         return {
             "drivers": {d.pk: d.current_city for d in queries.active_drivers()},
             "open": [(o.order_id, o.driver_id, o.eta_start, o.eta_end) for o in queries.open_orders()],
@@ -1633,8 +1615,8 @@ class TestRestartKeepsEverything(DbTruthCase):
             "real": queries.open_real_order_count(),
             "queues": {d.pk: dict(get_driver_city_queues(d.pk)) for d in queries.active_drivers()},
             "pick": [self._pick(c) for c in ("Davis", "Winters", "Fairfield")],
-            "pending": [(i["order"].order_id, i["order"].status) for i in _pending_orders()],
-            "restock": _restock_context(),
+            "pending": [(i["order"].order_id, i["order"].status) for i in dashboard.pending_cards()],
+            "restock": restock.restock_context(),
         }
 
     def _pick(self, city):
@@ -1775,10 +1757,10 @@ class TestNoStaleSaves(DbTruthCase):
         self._driver("D1")
         self._add("o1", "Davis")
         stale = Order.objects.get(order_id="o1")
-        Order.objects.filter(order_id="o1").update(payment_type="Debit", status=Order.Status.SENT, dispatch_sent=True)
+        Order.objects.filter(order_id="o1").update(payment_type="Debit", status=Order.Status.SENT)
         stale.set_etas(self.BASE, self.BASE + timedelta(hours=1))
         fresh = Order.objects.get(order_id="o1")
-        self.assertEqual((fresh.payment_type, fresh.status, fresh.dispatch_sent), ("Debit", Order.Status.SENT, True))
+        self.assertEqual((fresh.payment_type, fresh.status), ("Debit", Order.Status.SENT))
         self.assertEqual(fresh.eta_end, self.BASE + timedelta(hours=1))
 
     def test_driver_add_order_leaves_other_fields_alone(self):
@@ -1814,47 +1796,46 @@ class TestRestockTab(DbTruthCase):
         return view(_as_dispatcher(RequestFactory().post("/x", data)))
 
     def test_full_restock_flow(self):
-        from orders.views import _restock_context, reconcile_restock, clear_restock
+        from orders.views import reconcile_restock, clear_restock
         self._driver("D1")
         self._completed("a", [("Gummy", 2), ("Preroll", 1)])
         self._completed("b", [("Gummy", 3)])
-        ctx = _restock_context()
+        ctx = restock.restock_context()
         self.assertEqual([o.order_id for o in ctx["completed_orders"]], ["a", "b"])
         self.assertEqual(ctx["restock_items"], {})
 
         self._post(reconcile_restock, order_ids=["a"])
-        ctx = _restock_context()
+        ctx = restock.restock_context()
         self.assertEqual([o.order_id for o in ctx["completed_orders"]], ["b"])
         self.assertEqual(ctx["restock_items"], {"Gummy": {"quantity": 2}, "Preroll": {"quantity": 1}})
 
         self._post(reconcile_restock, order_ids=["b"])
-        self.assertEqual(_restock_context()["restock_items"]["Gummy"], {"quantity": 5})
+        self.assertEqual(restock.restock_context()["restock_items"]["Gummy"], {"quantity": 5})
 
         self._post(clear_restock)
-        ctx = _restock_context()
+        ctx = restock.restock_context()
         self.assertEqual((ctx["completed_orders"], ctx["restock_items"]), ([], {}))
         self.assertTrue(Order.objects.get(order_id="a").restock_cleared)
 
     def test_cleared_orders_are_not_counted_again(self):
-        from orders.views import _restock_context, reconcile_restock, clear_restock
+        from orders.views import reconcile_restock, clear_restock
         self._driver("D1")
         self._completed("a", [("Gummy", 2)])
         self._post(reconcile_restock, order_ids=["a"])
         self._post(clear_restock)
         self._completed("b", [("Gummy", 1)])
         self._post(reconcile_restock, order_ids=["b"])
-        self.assertEqual(_restock_context()["restock_items"], {"Gummy": {"quantity": 1}})
+        self.assertEqual(restock.restock_context()["restock_items"], {"Gummy": {"quantity": 1}})
 
     def test_only_completed_delivery_orders_are_listed(self):
         from orders.services.engine import add_shell_order, add_storefront_order, cancel_order
-        from orders.views import _restock_context
         self._driver("D1")
         self._completed("done", [("Gummy", 1)])
         self._add("cancelled", "Davis"); cancel_order("cancelled")
         self._add("open", "Davis")
         add_shell_order("Davis"); complete_order("noop", city="Davis")  # closes the shell
         add_storefront_order(order_id="store", customer_name="Walk In", order_time=self.BASE)
-        self.assertEqual([o.order_id for o in _restock_context()["completed_orders"]], ["done"])
+        self.assertEqual([o.order_id for o in restock.restock_context()["completed_orders"]], ["done"])
 
     def test_reconcile_ignores_orders_that_are_not_completed(self):
         from orders.views import reconcile_restock
@@ -2028,12 +2009,13 @@ class TestNewOrderWithNoDriver(DbTruthCase):
         from orders.views import new_order
         request = RequestFactory().post("/new_order", data=json.dumps(payload), content_type="application/json")
         with ExitStack() as stack:
-            mocks = {name: stack.enter_context(patch(f"orders.views.{name}")) for name in (
+            mocks = {name: stack.enter_context(patch(f"orders.tasks.{name}")) for name in (
                 "prepare_order_task", "resolve_payment_type_task", "fill_order_notes_task",
                 "send_message_task", "send_merchant_pay_link_task",
             )}
-            mocks["get_dispatch_msg"] = stack.enter_context(
-                patch("orders.views.get_dispatch_msg", wraps=orders_views.get_dispatch_msg))
+            from orders.services import intake
+            mocks["estimate_window"] = stack.enter_context(
+                patch("orders.services.intake.estimate_window", wraps=intake.estimate_window))
             response = new_order(request, key=settings.WEBHOOK_SECRET)
         return response, mocks
 
@@ -2042,13 +2024,13 @@ class TestNewOrderWithNoDriver(DbTruthCase):
                 "subtotal": 500, "total": 500, "discount": 0, **extra}
 
     @override_settings(RESTOCK_TEST_MODE=False)
-    def test_unassigned_order_is_saved_without_an_eta_and_skips_get_dispatch_msg(self):
+    def test_unassigned_order_is_saved_without_an_eta_and_skips_the_eta_estimate(self):
         with self.assertLogs("orders.services.engine", "WARNING"):
             response, mocks = self._post(self._payload())
         self.assertEqual(response.status_code, 200)
         order = Order.objects.get(order_id="7001")
         self.assertEqual((order.driver_id, order.eta_start, order.status), (None, None, Order.Status.AWAITING_APPROVAL))
-        mocks["get_dispatch_msg"].assert_not_called()
+        mocks["estimate_window"].assert_not_called()
         mocks["send_message_task"].delay.assert_not_called()
         # the WebJoint pull/dispatch does not depend on our driver
         mocks["prepare_order_task"].delay.assert_called_once_with(WJ_ID, False)
@@ -2088,7 +2070,7 @@ class TestNewOrderWithNoDriver(DbTruthCase):
         order = Order.objects.get(order_id="7001")
         self.assertIsNotNone(order.driver_id)
         self.assertIsNotNone(order.eta_start)
-        mocks["get_dispatch_msg"].assert_called_once()
+        mocks["estimate_window"].assert_called_once()
 
 
 class TestUnassignedQueue(DbTruthCase):
@@ -2135,7 +2117,7 @@ class TestUnassignedQueue(DbTruthCase):
         from orders.views import send_dispatch_msg_view
         add_order(order_city="Davis", order_id="u1", customer_name="C", order_time=self.BASE)
         Order.objects.filter(order_id="u1").update(payment_type="Cash")
-        with patch("orders.views.send_message_task") as send_task, self.assertLogs("orders.views", "WARNING"):
+        with patch("orders.tasks.send_message_task") as send_task, self.assertLogs("orders.views", "WARNING"):
             send_dispatch_msg_view(_as_dispatcher(RequestFactory().post("/x", {"order_id": "u1"})))
         send_task.delay.assert_not_called()
         self.assertEqual(Order.objects.get(order_id="u1").status, Order.Status.AWAITING_APPROVAL)
@@ -2153,11 +2135,10 @@ class TestAssignDriverView(DbTruthCase):
         self.driver = self._driver("D1")
 
     def test_card_becomes_a_normal_queue_card(self):
-        from orders.views import _pending_orders
-        before = _pending_orders()
+        before = dashboard.pending_cards()
         self.assertTrue(before[0]["unassigned"])
         self._assign("u1", self.driver.pk)
-        after = _pending_orders()
+        after = dashboard.pending_cards()
         self.assertFalse(after[0]["unassigned"])
         self.assertEqual(after[0]["eta_start_value"], "14:30")
 
@@ -2174,7 +2155,7 @@ class TestAssignDriverView(DbTruthCase):
 
     def test_sent_order_is_assigned_without_texting_anyone(self):
         Order.objects.filter(order_id="u1").update(status=Order.Status.SENT)
-        with patch("orders.views.send_message_task") as send_task, patch("orders.views.fill_order_notes_task") as notes:
+        with patch("orders.tasks.send_message_task") as send_task, patch("orders.tasks.fill_order_notes_task") as notes:
             self._assign("u1", self.driver.pk)
         send_task.delay.assert_not_called()
         notes.delay.assert_not_called()
@@ -2186,7 +2167,7 @@ class TestAssignDriverView(DbTruthCase):
     def test_no_text_customer_gets_notes_and_is_marked_sent_on_assignment(self):
         Order.objects.filter(order_id="u1").update(
             customer_name="Mohsen Awara", payment_type="Cash", webjoint_id=WJ_ID)
-        with patch("orders.views.fill_order_notes_task") as notes, patch("orders.views.send_message_task") as send_task:
+        with patch("orders.tasks.fill_order_notes_task") as notes, patch("orders.tasks.send_message_task") as send_task:
             self._assign("u1", self.driver.pk)
         notes.delay.assert_called_once()
         self.assertEqual(notes.delay.call_args.args[0], WJ_ID)
@@ -2198,8 +2179,8 @@ class TestAssignDriverView(DbTruthCase):
     def test_no_text_customer_still_awaiting_payment_defers_the_note_to_the_lookup(self):
         Order.objects.filter(order_id="u1").update(
             customer_name="Mohsen Awara", payment_type="", status=Order.Status.AWAITING_PAYMENT)
-        with patch("orders.views.fill_order_notes_task") as notes, \
-             patch("orders.views.resolve_payment_type_task") as resolve:
+        with patch("orders.tasks.fill_order_notes_task") as notes, \
+             patch("orders.tasks.resolve_payment_type_task") as resolve:
             self._assign("u1", self.driver.pk)
         notes.delay.assert_not_called()
         resolve.delay.assert_called_once_with("u1", write_notes=True)
@@ -2207,7 +2188,7 @@ class TestAssignDriverView(DbTruthCase):
     @override_settings(RESTOCK_TEST_MODE=True)
     def test_test_mode_sends_and_writes_nothing(self):
         Order.objects.filter(order_id="u1").update(customer_name="Mohsen Awara", payment_type="Cash")
-        with patch("orders.views.fill_order_notes_task") as notes:
+        with patch("orders.tasks.fill_order_notes_task") as notes:
             self._assign("u1", self.driver.pk)
         notes.delay.assert_not_called()
         self.assertEqual(Order.objects.get(order_id="u1").status, Order.Status.AWAITING_APPROVAL)
@@ -2229,7 +2210,8 @@ class TestDriverControlViews(DbTruthCase):
         self.assertEqual(Driver.objects.count(), 0)
 
     def test_the_old_dummy_driver_view_is_gone(self):
-        self.assertFalse(hasattr(orders_views, "add_dummy_driver"))
+        from orders import views
+        self.assertFalse(hasattr(views, "add_dummy_driver"))
 
     def test_toggle_switches_a_driver_off_and_unassigns_their_orders(self):
         from orders.views import toggle_driver_view

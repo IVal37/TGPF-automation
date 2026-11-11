@@ -231,7 +231,7 @@ class TestPrepareOrderTaskNeverRepeatsAStep(TestCase):
 class TestSendMessageTask(TestCase):
     def test_success_moves_a_sending_order_to_sent(self):
         from orders.tasks import send_message_task
-        _order(status=Order.Status.SENDING, dispatch_sent=True)
+        _order(status=Order.Status.SENDING)
         with patch("orders.tasks.send_message") as scraper:
             send_message_task.apply(args=["9001", "15305551234", "hello"])
         scraper.assert_called_once_with("15305551234", "hello", order_ref="9001")
@@ -246,7 +246,7 @@ class TestSendMessageTask(TestCase):
 
     def test_failure_leaves_the_order_sending_with_the_error_and_no_phone_in_it(self):
         from orders.tasks import send_message_task
-        _order(status=Order.Status.SENDING, dispatch_sent=True)
+        _order(status=Order.Status.SENDING)
         with patch("orders.tasks.send_message", side_effect=_boom()), self.assertLogs("orders.tasks", "ERROR"):
             send_message_task.apply(args=["9001", "15305551234", "hello"])
         order = Order.objects.get(order_id="9001")
@@ -271,7 +271,7 @@ class TestSendingStatus(TestCase):
     def _send(self, view_name="send_dispatch_msg_view", **extra):
         from orders import views
         request = RequestFactory().post("/x", {"order_id": "9001", "eta_start": "14:45", "eta_end": "15:45", **extra})
-        with patch("orders.views.send_message_task") as send_task, patch("orders.views.fill_order_notes_task"):
+        with patch("orders.tasks.send_message_task") as send_task, patch("orders.tasks.fill_order_notes_task"):
             getattr(views, view_name)(_as_dispatcher(request))
         return send_task
 
@@ -281,7 +281,7 @@ class TestSendingStatus(TestCase):
         statuses = []
         from orders import views
         request = RequestFactory().post("/x", {"order_id": "9001", "eta_start": "14:45", "eta_end": "15:45"})
-        with patch("orders.views.send_message_task") as send_task, patch("orders.views.fill_order_notes_task"):
+        with patch("orders.tasks.send_message_task") as send_task, patch("orders.tasks.fill_order_notes_task"):
             send_task.delay.side_effect = lambda *a: statuses.append(Order.objects.get(order_id="9001").status)
             views.send_dispatch_msg_view(_as_dispatcher(request))
         self.assertEqual(statuses, [Order.Status.SENDING])
@@ -423,7 +423,7 @@ class TestRetryAndDismissViews(TestCase):
         self._failed()
         self._post("dismiss_error_view", order_id="9001")
         order = Order.objects.get(order_id="9001")
-        self.assertEqual((order.last_error, order.status, order.dispatch_sent), ("", Order.Status.SENT, True))
+        self.assertEqual((order.last_error, order.status), ("", Order.Status.SENT))
 
     def test_a_stuck_sending_order_with_no_error_can_be_marked_sent(self):
         _order(driver=self.driver, status=Order.Status.SENDING)
@@ -487,11 +487,6 @@ class TestMerchantPayReminder(TestCase):
         with self.assertLogs("orders.tasks", "WARNING"):
             send_merchant_pay_link_task.apply(args=["nope"])
         self.assertEqual(Notice.objects.count(), 0)
-
-    @override_settings(RESTOCK_TEST_MODE=False)
-    def test_new_order_passes_the_order_id(self):
-        from orders import views
-        self.assertIn("send_merchant_pay_link_task.delay(msg_dict[\"id\"])", Path(views.__file__).read_text())
 
 
 class TestFailureArtifacts(SimpleTestCase):

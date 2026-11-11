@@ -427,6 +427,11 @@
     </div>
   {% endfor %}
 
+  {# why the dispatcher's last action was refused; shown once #}
+  {% for message in messages %}
+    <div class="notice error"><span>{{ message }}</span></div>
+  {% endfor %}
+
   <p class="section-title" style="margin-top: 0;">Startup</p>
   <div class="startup-grid">
 

@@ -180,10 +180,12 @@ class TestNewOrderUsesTheConfig(TestCase):
         from orders.views import new_order
         payload = {**POS_ORDER, "shipping": {"city": "Davis", **shipping}}
         request = RequestFactory().post("/new_order", data=json.dumps(payload), content_type="application/json")
-        with patch("orders.views.add_order") as add_order, patch("orders.views.add_storefront_order") as storefront, \
-             patch("orders.views.get_dispatch_msg", return_value="msg"), patch("orders.views.is_under_min", return_value=True), \
-             patch("orders.views.send_message_task"), patch("orders.views.fill_order_notes_task"), \
-             patch("orders.views.prepare_order_task"):
+        with patch("orders.services.intake.add_order") as add_order, \
+             patch("orders.services.intake.add_storefront_order") as storefront, \
+             patch("orders.services.intake.under_min_text", return_value="msg"), \
+             patch("orders.services.intake.is_under_min", return_value=True), \
+             patch("orders.tasks.send_message_task"), patch("orders.tasks.fill_order_notes_task"), \
+             patch("orders.tasks.prepare_order_task"):
             response = new_order(request, key=settings.WEBHOOK_SECRET)
         return response, add_order, storefront
 
@@ -205,11 +207,10 @@ class TestNewOrderUsesTheConfig(TestCase):
         storefront.assert_not_called()
 
     def test_a_city_minimum_edited_in_the_database_takes_effect_immediately(self):
-        from orders.services.dispatch import is_under_min
-        msg = {"city": "Davis", "sub_total": Decimal("60.00"), "discount": Decimal("0")}
-        self.assertFalse(is_under_min(msg))
+        from orders.services.pricing import is_under_min
+        self.assertFalse(is_under_min(Decimal("60.00"), Decimal("0"), "Davis"))
         City.objects.filter(name="Davis").update(minimum=Decimal("100.00"))
-        self.assertTrue(is_under_min(msg))
+        self.assertTrue(is_under_min(Decimal("60.00"), Decimal("0"), "Davis"))
 
     def test_the_dashboard_city_dropdowns_come_from_the_database(self):
         City.objects.create(name="Zzyzx", minimum=Decimal("10.00"))

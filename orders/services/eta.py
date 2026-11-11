@@ -1,11 +1,10 @@
 # imports from std lib
 from datetime import datetime, timedelta
-from typing import List, DefaultDict
+from typing import DefaultDict, List
 
 # imports from project
 from orders.models import Driver, Order
 from orders.services import queries
-from orders.services.engine import get_driver_city_queues
 from orders.services.time import round_time, format_time
 from orders.services.hours import clamp_to_opening
 from orders.constants import (
@@ -21,13 +20,22 @@ def apply_scheduled_window(order: Order, start: datetime, end: datetime) -> bool
     order.set_etas(start, end)
     return True
 
+# works out an order's ETA window and saves it. A customer who picked a delivery
+# window keeps it when it is no earlier than the estimate (see apply_scheduled_window).
+def estimate_window(order_id: str) -> None:
+    order = Order.objects.get(order_id=order_id)
+    get_eta(order_id)
+    if order.scheduled_start and order.scheduled_end:
+        apply_scheduled_window(Order.objects.get(order_id=order_id), order.scheduled_start, order.scheduled_end)
+
+
 # returns two times creating an eta window of when the order will arrive
 def get_eta(order_id: str):
     # extract info about order
     order: Order = Order.objects.get(order_id=order_id)
     driver_id = order.driver_id
     driver_location: str = Driver.objects.get(pk=driver_id).current_city
-    driver_queue_by_city: DefaultDict[str, List[str]] = get_driver_city_queues(driver_id)
+    driver_queue_by_city: DefaultDict[str, List[str]] = queries.get_driver_city_queues(driver_id)
     # one lookup of every stop's city, shared by the route-time calculations below
     cities = {oid: city for city, oids in driver_queue_by_city.items() for oid in oids}
 

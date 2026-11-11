@@ -10,8 +10,8 @@ from django.utils import timezone
 # imports from project
 from orders.constants import PaymentType
 from orders.models import Order, OrderItem, OrderStatus
-from orders.services.dispatch import get_adjusted_total, get_effective_total, split_name
-from orders.services.money import round_money
+from orders.services.customers import customer_label
+from orders.services.pricing import adjusted_total, effective_total, round_money
 from orders.services.note import get_order_notes
 from orders.services.notices import add_notice
 from orders.services.telegram import send_telegram_message
@@ -39,17 +39,11 @@ logger = logging.getLogger(__name__)
 #    (Order.last_error...), where the dispatch card shows it in red with Retry
 #    and Dismiss, and logs it. Tasks with no order raise a dashboard notice.
 
-# who a failure is about: "First L." (never the full name or phone number)
-def _customer_label(order) -> str:
-    name, last_name = split_name(order.customer_name)
-    label = f"{name} {last_name[0]}." if last_name else name
-    return label or "customer"
-
 def failure_text(action: str, exc: BaseException, order=None, ref: str = "") -> str:
     step = failed_step(exc)
     # a BeforeCommitError's own message is already "ExcType: message" of its cause
     detail = str(exc) if isinstance(exc, BeforeCommitError) else describe(exc)
-    who = f" for {_customer_label(order)} (order {order.order_id})" if order else (f" (order {ref})" if ref else "")
+    who = f" for {customer_label(order.customer_name)} (order {order.order_id})" if order else (f" (order {ref})" if ref else "")
     text = f"{action} failed{who} at step '{step}': {detail}"
     if not isinstance(exc, BeforeCommitError):
         text += " — it may have gone through; check before retrying."
@@ -94,9 +88,7 @@ def send_message_task(order_id: str, phone: str, message: str) -> None:
     send_message(phone, message, order_ref=order_id)
     # the text is out: the order moves from sending to sent (only if it is still
     # sending, so a dispatcher's Dismiss or a later change isn't undone)
-    Order.objects.filter(order_id=order_id, status=OrderStatus.SENDING).update(
-        status=OrderStatus.SENT, dispatch_sent=True,
-    )
+    Order.objects.filter(order_id=order_id, status=OrderStatus.SENDING).update(status=OrderStatus.SENT)
 
 @shared_task(base=OrderTask, action="WebJoint note", order_key="webjoint_id")
 def fill_order_notes_task(order_id: str, order_notes: str) -> None:
@@ -188,8 +180,8 @@ def send_merchant_pay_link_task(order_id: str) -> None:
     if order is None:
         logger.warning("send_merchant_pay_link (order %s): no such order", order_id)
         return
-    amount = round_money(get_adjusted_total(get_effective_total(order), PaymentType.MERCHANT_PAY))
-    message = f"Send merchant pay link to {_customer_label(order)} for ${amount}"
+    amount = round_money(adjusted_total(effective_total(order), PaymentType.MERCHANT_PAY))
+    message = f"Send merchant pay link to {customer_label(order.customer_name)} for ${amount}"
     logger.info("%s (order %s)", message, order_id)
     add_notice(f"{message} (order {order_id})")
 

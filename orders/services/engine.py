@@ -1,9 +1,8 @@
 # imports from std lib
 from datetime import datetime
 from decimal import Decimal
-from collections import defaultdict
 import logging
-from typing import List, DefaultDict, Optional
+from typing import Optional
 import uuid
 
 # imports from third party
@@ -13,6 +12,7 @@ from django.utils import timezone
 from orders.constants import STOREFRONT_CITY
 from orders.models import Order, OrderItem, Driver, OrderStatus, QUEUE_STATUSES
 from orders.services import queries
+from orders.services.eta import estimate_window
 from orders.services.travel import get_travel_time
 
 logger = logging.getLogger(__name__)
@@ -43,11 +43,9 @@ def _save_items(order: Order, items: list) -> None:
             price=price,
         )
 
-# mark an order finished in the DB (used for completes, cancels, and shells).
-# status is the source of truth; `completed` is kept written (True for both
-# completed and cancelled, as before) for one release and never read.
+# mark an order finished in the DB (used for completes, cancels, and shells)
 def _close_order_in_db(order_id: str, status: str = Order.Status.COMPLETED) -> None:
-    Order.objects.filter(order_id=order_id).update(status=status, completed=True, driver=None)
+    Order.objects.filter(order_id=order_id).update(status=status, driver=None)
 
 # a driver who is no longer on shift keeps their last city untouched
 def _move_driver(driver_id: int, city: str) -> None:
@@ -107,16 +105,12 @@ def add_order(
 # customer's scheduled window, if they picked one); an order that was already
 # texted keeps the ETA the customer was told.
 def assign_order(order_id: str, driver_id: int) -> None:
-    from orders.services.eta import apply_scheduled_window, get_eta
-
     order = Order.objects.get(order_id=order_id)
     driver = Driver.objects.get(pk=driver_id, is_active=True)
     driver.add_order(order)
 
     if order.status in QUEUE_STATUSES:
-        get_eta(order_id)
-        if order.scheduled_start and order.scheduled_end:
-            apply_scheduled_window(Order.objects.get(order_id=order_id), order.scheduled_start, order.scheduled_end)
+        estimate_window(order_id)
 
 # record a walk-in storefront sale (e.g. 3rd St pickup): no driver, no ETA, no
 # dispatch SMS — just persisted so the nightly restock digest can query it.
@@ -144,10 +138,6 @@ def add_storefront_order(
         total=total,
         delivery_fee=delivery_fee,
         status=Order.Status.STOREFRONT,
-        # kept in step with status for one release; never read
-        completed=True,
-        dispatch_sent=True,
-        is_storefront=True,
     )
     order.save()
     _save_items(order, items)
@@ -194,7 +184,6 @@ def add_shell_order(city: str) -> None:
         is_shell=True,
         # a shell is with a driver and never queued
         status=Order.Status.SENT,
-        dispatch_sent=True,
     )
     order.save()
     assigned_driver.add_order(order)
@@ -231,9 +220,3 @@ def delete_driver(driver_id: int) -> None:
     remove_driver(driver_id)
     Driver.objects.filter(pk=driver_id).delete()
 
-# return a dictionary of city -> the driver's open order ids there (in route order)
-def get_driver_city_queues(driver_id: int) -> DefaultDict[str, List[str]]:
-    orders_by_city: DefaultDict[str, List[str]] = defaultdict(list)
-    for order in queries.open_orders(driver_id):
-        orders_by_city[order.city].append(order.order_id)
-    return orders_by_city

@@ -1,12 +1,13 @@
 # imports from std lib
-from typing import Dict, Iterable, Optional
+from collections import defaultdict
+from typing import DefaultDict, Dict, Iterable, List, Optional
 
 # imports from third party
-from django.db.models import Count, QuerySet
+from django.db.models import Count, Q, QuerySet
 from django.utils import timezone
 
 # imports from project
-from orders.models import Driver, Order, OPEN_STATUSES
+from orders.models import OPEN_STATUSES, QUEUE_STATUSES, Driver, Order, OrderStatus
 
 # The database is the only source of truth for who is driving where. Everything
 # that used to read the in-memory dicts goes through these helpers.
@@ -71,3 +72,23 @@ def find_open_shell(city: str, driver_id: Optional[int] = None) -> Optional[Orde
 # {order_id: city} for the given order ids
 def cities_by_order_id(order_ids: Iterable[str]) -> Dict[str, str]:
     return dict(Order.objects.filter(order_id__in=list(order_ids)).values_list("order_id", "city"))
+
+
+# {city: [order ids of the driver's open orders there, in route order]}
+def get_driver_city_queues(driver_id: int) -> DefaultDict[str, List[str]]:
+    orders_by_city: DefaultDict[str, List[str]] = defaultdict(list)
+    for order in open_orders(driver_id):
+        orders_by_city[order.city].append(order.order_id)
+    return orders_by_city
+
+
+# the Dispatch Queue tab: queued orders with an ETA window to approve, today's
+# unassigned orders (no driver yet, so no ETA) waiting for a dispatcher to pick one,
+# anything being texted right now, and anything with a failure to show (even an order
+# already sent: a note that failed to save still needs a look). Shells never show.
+def pending_orders() -> QuerySet:
+    queued = Q(status__in=QUEUE_STATUSES, eta_start__isnull=False)
+    unassigned = Q(status__in=OPEN_STATUSES, driver__isnull=True, order_date__date=today())
+    sending = Q(status=OrderStatus.SENDING, order_date__date=today())
+    failed = ~Q(last_error="")
+    return Order.objects.filter(queued | unassigned | sending | failed, is_shell=False)
