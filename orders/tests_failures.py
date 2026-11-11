@@ -582,14 +582,14 @@ class TestFailureArtifacts(SimpleTestCase):
 
 
 class TestFetchCodeReadsCredentialsWhenCalled(SimpleTestCase):
-    def test_imap_credentials_are_read_at_call_time(self):
+    def test_imap_credentials_come_from_settings(self):
         from orders.services.scrapers import merchant_pay_helper
         mailbox = MagicMock()
         mailbox.__enter__.return_value = mailbox
         mailbox.search.return_value = ("OK", [b"1"])
         message = b"Subject: code\r\n\r\nYour code is 123456\r\n"
         mailbox.fetch.return_value = ("OK", [(b"1", message)])
-        with patch.dict(os.environ, {"MERCHANT_PAY_IMAP_USER": "me@example.com", "MERCHANT_PAY_IMAP_PASS": "secret"}), \
+        with override_settings(MERCHANT_PAY_IMAP_USER="me@example.com", MERCHANT_PAY_IMAP_PASS="secret"), \
              patch.object(merchant_pay_helper.imaplib, "IMAP4_SSL", return_value=mailbox):
             code = merchant_pay_helper.FetchCode(timeout=1, poll=0)
         mailbox.login.assert_called_once_with("me@example.com", "secret")
@@ -627,6 +627,7 @@ class TestNoTelegramOutsideTheRestockDigests(SimpleTestCase):
             str(p.relative_to(root)) for p in root.rglob("*.py")
             if "telegram" in p.read_text().lower() and "tests" not in p.name and "migrations" not in p.parts
         )
-        self.assertEqual(users, ["services/telegram.py", "tasks.py"])
+        # send_test_message is the manual "does the channel work" command; it refuses in test mode
+        self.assertEqual(users, ["management/commands/send_test_message.py", "services/telegram.py", "tasks.py"])
         source = (root / "tasks.py").read_text()
         self.assertEqual(source.count("send_telegram_message("), 2)

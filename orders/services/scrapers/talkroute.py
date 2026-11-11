@@ -1,6 +1,8 @@
 # imports from std lib
-import os
 import time
+
+# imports from django
+from django.conf import settings
 
 # imports from selenium
 from selenium.webdriver.common.by import By
@@ -23,8 +25,8 @@ def send_message(customer_number: str, dispatch_msg: str, order_ref=None):
 
         # initial login
         try:
-            fill(wait, (By.ID, "login-page-email-input"), os.environ.get('TALKROUTE_EMAIL', ''))
-            fill(wait, (By.ID, "login-page-password-input"), os.environ.get('TALKROUTE_PASSWORD', ''))
+            fill(wait, (By.ID, "login-page-email-input"), settings.TALKROUTE_EMAIL)
+            fill(wait, (By.ID, "login-page-password-input"), settings.TALKROUTE_PASSWORD)
             click(wait, (By.ID, "login-page-login-button"))
         except Exception:
             pass

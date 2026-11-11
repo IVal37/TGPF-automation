@@ -959,7 +959,7 @@ class TestBuildRestockMessageEmpty(TestCase):
 
 
 class TestSendTelegramMessage(SimpleTestCase):
-    @patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "abc123", "TELEGRAM_CHAT_ID": "-100999"})
+    @override_settings(TELEGRAM_BOT_TOKEN="abc123", TELEGRAM_CHAT_ID="-100999")
     @patch("orders.services.telegram.requests.post")
     def test_posts_to_bot_api_with_chat_id_and_text(self, mock_post):
         from orders.services.telegram import send_telegram_message
@@ -971,7 +971,7 @@ class TestSendTelegramMessage(SimpleTestCase):
         self.assertEqual(kwargs["data"]["chat_id"], "-100999")
         self.assertEqual(kwargs["data"]["text"], "hello")
 
-    @patch.dict(os.environ, {"TELEGRAM_BOT_TOKEN": "", "TELEGRAM_CHAT_ID": ""})
+    @override_settings(TELEGRAM_BOT_TOKEN="", TELEGRAM_CHAT_ID="")
     @patch("orders.services.telegram.requests.post")
     def test_missing_config_does_not_attempt_send(self, mock_post):
         from orders.services.telegram import send_telegram_message

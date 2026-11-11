@@ -1,5 +1,4 @@
 # imports from std lib
-import os
 import subprocess
 import atexit
 import requests
@@ -7,6 +6,7 @@ import time
 import json
 
 # imports from django
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
 # imports from project
@@ -31,7 +31,7 @@ def start_ngrok():
 
 
 def get_endpoint_link() -> str:
-    token = os.environ.get('NGROK_AUTH_TOKEN')
+    token = settings.NGROK_AUTH_TOKEN
     if not token:
         raise ValueError("NGROK_AUTH_TOKEN is not set in .env")
     url = "https://api.ngrok.com/endpoints"

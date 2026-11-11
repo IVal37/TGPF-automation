@@ -1,5 +1,10 @@
 # imports from std lib
-import imaplib, email, re, time, os
+import email
+import imaplib
+import re
+import time
+
+from django.conf import settings
 
 IMAP_HOST = "imap.gmail.com"
 
@@ -9,12 +14,9 @@ CODE_SENDER = "donotreply@greenbaxmarketplace.io"
 CODE_RE = re.compile(r"\b(\d{6})\b")
 
 def FetchCode(timeout=120, poll=5):
-    # read when called, not at import, so a .env loaded after this module is imported still counts
-    imap_user = os.environ.get('MERCHANT_PAY_IMAP_USER', '')
-    imap_pass = os.environ.get('MERCHANT_PAY_IMAP_PASS', '')
     end = time.time() + timeout
     with imaplib.IMAP4_SSL(IMAP_HOST) as M:
-        M.login(imap_user, imap_pass)
+        M.login(settings.MERCHANT_PAY_IMAP_USER, settings.MERCHANT_PAY_IMAP_PASS)
         while time.time() < end:
             M.select("INBOX")
             typ, data = M.search(None, f'UNSEEN FROM "{CODE_SENDER}"')

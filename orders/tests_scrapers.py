@@ -224,7 +224,7 @@ class ScraperTraceTests(SimpleTestCase):
             stack.enter_context(patch("selenium.webdriver.support.wait.time", FakeClock()))
             for module in (webjoint, talkroute, weedmaps, merchant_pay):
                 stack.enter_context(patch.object(module, "time", FakeTime(trace)))
-            stack.enter_context(patch.dict(os.environ, FAKE_ENV))
+            stack.enter_context(override_settings(**FAKE_ENV))
             stack.enter_context(patch.object(browser, "_now", lambda: FIXED_NOW))
             for p in extra_patches:
                 stack.enter_context(p)

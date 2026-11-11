@@ -1,9 +1,9 @@
 # imports from std lib
 import logging
-import os
 
 # imports from third party
 import requests
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -11,8 +11,8 @@ _API_URL = "https://api.telegram.org/bot{token}/sendMessage"
 
 
 def send_telegram_message(text: str) -> None:
-    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
+    token = settings.TELEGRAM_BOT_TOKEN
+    chat_id = settings.TELEGRAM_CHAT_ID
     if not token or not chat_id:
         logger.error("send_telegram_message: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID not set")
         return

@@ -1,9 +1,11 @@
 # imports from std lib
 import logging
-import os
 import time
 
 logger = logging.getLogger(__name__)
+
+# imports from django
+from django.conf import settings
 
 # imports from project
 from orders.services.scrapers.browser import browser_session, click, fill, scroll_into_view
@@ -18,8 +20,8 @@ def send_merchant_pay_link():
         driver.get("https://merchantpay.greenbaxmarketplace.io/login")
 
         try:          
-            fill(wait, (By.ID, "mat-input-0"), os.environ.get('MERCHANT_PAY_EMAIL', ''))
-            fill(wait, (By.ID, "mat-input-1"), os.environ.get('MERCHANT_PAY_PASSWORD', ''))
+            fill(wait, (By.ID, "mat-input-0"), settings.MERCHANT_PAY_EMAIL)
+            fill(wait, (By.ID, "mat-input-1"), settings.MERCHANT_PAY_PASSWORD)
             click(wait, (By.XPATH, "/html/body/app-root/app-login-page/app-login/app-not-auth/div/section/form/button"))
         except Exception:
             pass

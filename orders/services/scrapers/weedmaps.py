@@ -1,9 +1,11 @@
 # imports from std lib
 import logging
-import os
 import time
 
 logger = logging.getLogger(__name__)
+
+# imports from django
+from django.conf import settings
 
 # imports from selenium
 from selenium.webdriver.common.by import By
@@ -37,8 +39,8 @@ def get_wm_payment_type(weedmaps_order_id):
 
         # intial login
         try:          
-            fill(wait, (By.ID, "user_username"), os.environ.get('WEEDMAPS_EMAIL', ''))
-            fill(wait, (By.ID, "user_password"), os.environ.get('WEEDMAPS_PASSWORD', ''))
+            fill(wait, (By.ID, "user_username"), settings.WEEDMAPS_EMAIL)
+            fill(wait, (By.ID, "user_password"), settings.WEEDMAPS_PASSWORD)
             click(wait, (By.CLASS_NAME, "btn.btn-signup-primary"))
         except Exception:
             pass

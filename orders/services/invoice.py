@@ -7,11 +7,10 @@ from typing import List
 
 # imports from third party
 from anthropic import Anthropic
+from django.conf import settings
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
-
-_MODEL = "claude-opus-4-8"
 
 _EXTRACTION_PROMPT = (
     "Extract every product line item from this invoice. For each product, fill in "
@@ -47,12 +46,12 @@ class _InvoiceProducts(BaseModel):
 
 
 def extract_products_from_invoice(file_bytes: bytes, media_type: str) -> list[dict]:
-    client = Anthropic()
+    client = Anthropic(api_key=settings.ANTHROPIC_API_KEY or None)
     block_type = "document" if media_type == "application/pdf" else "image"
     data = base64.standard_b64encode(file_bytes).decode("utf-8")
 
     response = client.messages.parse(
-        model=_MODEL,
+        model=settings.INVOICE_MODEL,
         max_tokens=16000,
         messages=[{
             "role": "user",

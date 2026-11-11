@@ -3,12 +3,14 @@ import difflib
 import functools
 import inspect
 import logging
-import os
 import re
 import time
 from typing import Dict, Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
+
+# imports from django
+from django.conf import settings
 
 # imports from selenium
 from selenium.webdriver.common.by import By
@@ -45,8 +47,8 @@ class WrongOrderError(BeforeCommitError):
 
 def _login(driver, wait):
     driver.get(_WEBJOINT_URL)
-    fill(wait, (By.CLASS_NAME, "c199.c13"), os.environ.get('WEBJOINT_EMAIL', ''))
-    fill(wait, (By.CLASS_NAME, "c199.c202.c13"), os.environ.get('WEBJOINT_PASSWORD', ''))
+    fill(wait, (By.CLASS_NAME, "c199.c13"), settings.WEBJOINT_EMAIL)
+    fill(wait, (By.CLASS_NAME, "c199.c202.c13"), settings.WEBJOINT_PASSWORD)
     click(wait, (By.CLASS_NAME, "c230.c204.c206.c209.c15"))
 
 
