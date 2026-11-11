@@ -42,6 +42,19 @@ Running tests (in-memory SQLite, MySQL does not need to be running):
 
     python manage.py test orders --settings=orders.test_settings
 
+Lint and format (`pip install -r requirements-dev.txt` once):
+
+    ruff check . && ruff format --check .
+
 Scraper tests compare recorded browser action traces to golden files in orders/fixtures/scraper_traces/. After an intentional scraper change, rewrite them with:
 
-    UPDATE_TRACES=1 python manage.py test orders.tests_scrapers --settings=orders.test_settings
+    UPDATE_TRACES=1 python manage.py test orders.tests.test_scrapers --settings=orders.test_settings
+
+Checking a channel works (both really send, and refuse to run while `RESTOCK_TEST_MODE=true`):
+
+    python manage.py send_test_message --sms        # texts TALKROUTE_TEST_PHONE
+    python manage.py send_test_message --telegram   # posts "testing" to the restock channel
+
+Checking dependencies for known vulnerabilities (needs requirements-dev.txt):
+
+    pip-audit -r requirements.txt --no-deps --disable-pip

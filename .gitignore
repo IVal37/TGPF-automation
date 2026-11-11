@@ -27,3 +27,7 @@ todo.md
 
 # Local spike findings (contain internal API details)
 notes/
+
+# Editor and tool caches
+.vscode/
+.ruff_cache/
