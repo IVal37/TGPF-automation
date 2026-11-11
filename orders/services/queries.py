@@ -34,7 +34,9 @@ def active_drivers() -> QuerySet:
 # driver's only
 def open_orders(driver_id: Optional[int] = None) -> QuerySet:
     orders = Order.objects.filter(
-        status__in=OPEN_STATUSES, driver__isnull=False, order_date__date=today(),
+        status__in=OPEN_STATUSES,
+        driver__isnull=False,
+        order_date__date=today(),
     )
     if driver_id is not None:
         orders = orders.filter(driver_id=driver_id)
@@ -45,7 +47,10 @@ def open_orders(driver_id: Optional[int] = None) -> QuerySet:
 # driver was switched off. Shells are placeholders for a driver, never unassigned
 def unassigned_orders() -> QuerySet:
     return Order.objects.filter(
-        status__in=OPEN_STATUSES, driver__isnull=True, is_shell=False, order_date__date=today(),
+        status__in=OPEN_STATUSES,
+        driver__isnull=True,
+        is_shell=False,
+        order_date__date=today(),
     ).order_by("pk")
 
 

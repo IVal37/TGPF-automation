@@ -16,16 +16,23 @@ from orders.tests.helpers import DbTruthCase, as_dispatcher
 class TestPendingOrdersFsaFsm(TestCase):
     def test_linked_companion_disappears_from_queue_and_primary_shows_it(self):
         Order.objects.create(
-            order_id="p1", customer_name="Jane Doe", city="Davis",
+            order_id="p1",
+            customer_name="Jane Doe",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
+            eta_start=datetime(2026, 7, 20, 14, 30, 0),
+            eta_end=datetime(2026, 7, 20, 15, 30, 0),
         )
         primary = Order.objects.get(order_id="p1")
         Order.objects.create(
-            order_id="p2", customer_name="Frank Sinatra Adult", city="Davis",
+            order_id="p2",
+            customer_name="Frank Sinatra Adult",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
-            linked_order=primary, status=Order.Status.SENT,
+            eta_start=datetime(2026, 7, 20, 14, 30, 0),
+            eta_end=datetime(2026, 7, 20, 15, 30, 0),
+            linked_order=primary,
+            status=Order.Status.SENT,
         )
         result = dashboard.pending_cards()
         order_ids = [item["order"].order_id for item in result]
@@ -37,19 +44,28 @@ class TestPendingOrdersFsaFsm(TestCase):
 
     def test_fsa_fsm_card_shows_link_targets_excluding_itself_and_other_fsa(self):
         Order.objects.create(
-            order_id="p3", customer_name="Jane Doe", city="Davis",
+            order_id="p3",
+            customer_name="Jane Doe",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
+            eta_start=datetime(2026, 7, 20, 14, 30, 0),
+            eta_end=datetime(2026, 7, 20, 15, 30, 0),
         )
         Order.objects.create(
-            order_id="p4", customer_name="Frank Sinatra Adult", city="Davis",
+            order_id="p4",
+            customer_name="Frank Sinatra Adult",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
+            eta_start=datetime(2026, 7, 20, 14, 30, 0),
+            eta_end=datetime(2026, 7, 20, 15, 30, 0),
         )
         Order.objects.create(
-            order_id="p5", customer_name="Frank Sinatra Medical", city="Davis",
+            order_id="p5",
+            customer_name="Frank Sinatra Medical",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
+            eta_start=datetime(2026, 7, 20, 14, 30, 0),
+            eta_end=datetime(2026, 7, 20, 15, 30, 0),
         )
         result = dashboard.pending_cards()
         fsa_item = next(item for item in result if item["order"].order_id == "p4")
@@ -61,11 +77,17 @@ class TestPendingOrdersFsaFsm(TestCase):
 class TestPendingOrdersCard(TestCase):
     def _html(self, payment_type):
         from orders.views import pending_orders_partial
+
         driver = Driver.objects.create(name="D1", is_active=True)
         Order.objects.create(
-            order_id="9001", driver=driver, customer_name="Jane Doe", city="Davis", payment_type=payment_type,
+            order_id="9001",
+            driver=driver,
+            customer_name="Jane Doe",
+            city="Davis",
+            payment_type=payment_type,
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
+            eta_start=datetime(2026, 7, 20, 14, 30, 0),
+            eta_end=datetime(2026, 7, 20, 15, 30, 0),
         )
         request = as_dispatcher(RequestFactory().get("/pending_orders_partial"))
         return pending_orders_partial(request).content.decode()
@@ -87,6 +109,7 @@ class TestPendingOrdersCard(TestCase):
 class TestUnassignedQueue(DbTruthCase):
     def _html(self):
         from orders.views import pending_orders_partial
+
         return pending_orders_partial(as_dispatcher(RequestFactory().get("/p"))).content.decode()
 
     def test_unassigned_card_has_a_driver_select_and_no_send(self):
@@ -121,12 +144,14 @@ class TestUnassignedQueue(DbTruthCase):
         self.assertEqual(html.count('action="/send_dispatch_msg"'), 1)
 
     def test_yesterdays_unassigned_order_is_not_shown(self):
-        add_order(order_city="Davis", order_id="old", customer_name="Old Cust",
-                  order_time=self.BASE - timedelta(days=1))
+        add_order(
+            order_city="Davis", order_id="old", customer_name="Old Cust", order_time=self.BASE - timedelta(days=1)
+        )
         self.assertNotIn("Old Cust", self._html())
 
     def test_send_is_refused_for_an_unassigned_order(self):
         from orders.views import send_dispatch_msg_view
+
         add_order(order_city="Davis", order_id="u1", customer_name="C", order_time=self.BASE)
         Order.objects.filter(order_id="u1").update(payment_type="Cash")
         with patch("orders.tasks.send_message_task") as send_task, self.assertLogs("orders.views", "WARNING"):
@@ -141,21 +166,25 @@ class TestDriverControlViews(DbTruthCase):
 
     def test_add_driver_creates_an_on_shift_driver_starting_in_davis(self):
         from orders.views import add_driver_view
+
         self._post(add_driver_view, name="  Sam Rivera ")
         driver = Driver.objects.get(name="Sam Rivera")
         self.assertEqual((driver.is_active, driver.current_city), (True, "Davis"))
 
     def test_add_driver_ignores_a_blank_name(self):
         from orders.views import add_driver_view
+
         self._post(add_driver_view, name="   ")
         self.assertEqual(Driver.objects.count(), 0)
 
     def test_the_old_dummy_driver_view_is_gone(self):
         from orders import views
+
         self.assertFalse(hasattr(views, "add_dummy_driver"))
 
     def test_toggle_switches_a_driver_off_and_unassigns_their_orders(self):
         from orders.views import toggle_driver_view
+
         driver = self._driver("D1")
         self._add("o1", "Davis")
         self._post(toggle_driver_view, driver_id=driver.pk)
@@ -164,17 +193,20 @@ class TestDriverControlViews(DbTruthCase):
 
     def test_toggle_switches_a_driver_back_on(self):
         from orders.views import toggle_driver_view
+
         driver = Driver.objects.create(name="D1", is_active=False)
         self._post(toggle_driver_view, driver_id=driver.pk)
         self.assertTrue(Driver.objects.get(pk=driver.pk).is_active)
 
     def test_toggle_unknown_driver_is_a_404(self):
         from orders.views import toggle_driver_view
+
         with self.assertRaises(Http404):
             self._post(toggle_driver_view, driver_id=999)
 
     def test_delete_driver_unassigns_their_orders(self):
         from orders.views import delete_driver_view
+
         driver = self._driver("D1")
         self._add("o1", "Davis")
         self._post(delete_driver_view, driver_id=driver.pk)
@@ -185,6 +217,7 @@ class TestDriverControlViews(DbTruthCase):
 class TestStartupPanel(DbTruthCase):
     def _page(self):
         from django.test import Client
+
         client = Client()
         client.force_login(User.objects.get_or_create(username="dispatcher")[0])
         return client.get("/").content.decode()
@@ -205,8 +238,7 @@ class TestStartupPanel(DbTruthCase):
         d1, d2 = self._driver("Dee"), self._driver("Eve")
         self._add("sent1", "Davis")
         self._add("queued1", "Davis")
-        Order.objects.filter(order_id="sent1").update(
-            status=Order.Status.SENT, driver=d1, customer_name="Out Cust")
+        Order.objects.filter(order_id="sent1").update(status=Order.Status.SENT, driver=d1, customer_name="Out Cust")
         Order.objects.filter(order_id="queued1").update(driver=d2, customer_name="Queued Cust")
         html = self._page()
         self.assertIn("Out Cust", html)
@@ -217,6 +249,7 @@ class TestStartupPanel(DbTruthCase):
 
     def test_mark_delivered_completes_the_order(self):
         from orders.views import complete_order_manual
+
         self._driver("Dee")
         self._add("sent1", "Davis")
         Order.objects.filter(order_id="sent1").update(status=Order.Status.SENT)
@@ -240,6 +273,7 @@ class TestRestockTab(DbTruthCase):
 
     def test_full_restock_flow(self):
         from orders.views import clear_restock, reconcile_restock
+
         self._driver("D1")
         self._completed("a", [("Gummy", 2), ("Preroll", 1)])
         self._completed("b", [("Gummy", 3)])
@@ -262,6 +296,7 @@ class TestRestockTab(DbTruthCase):
 
     def test_cleared_orders_are_not_counted_again(self):
         from orders.views import clear_restock, reconcile_restock
+
         self._driver("D1")
         self._completed("a", [("Gummy", 2)])
         self._post(reconcile_restock, order_ids=["a"])
@@ -272,6 +307,7 @@ class TestRestockTab(DbTruthCase):
 
     def test_only_completed_delivery_orders_are_listed(self):
         from orders.services.engine import add_shell_order, add_storefront_order, cancel_order
+
         self._driver("D1")
         self._completed("done", [("Gummy", 1)])
         self._add("cancelled", "Davis")
@@ -284,6 +320,7 @@ class TestRestockTab(DbTruthCase):
 
     def test_reconcile_ignores_orders_that_are_not_completed(self):
         from orders.views import reconcile_restock
+
         self._driver("D1")
         self._add("open", "Davis")
         self._post(reconcile_restock, order_ids=["open"])
@@ -291,6 +328,7 @@ class TestRestockTab(DbTruthCase):
 
     def test_restock_tab_renders_from_the_database(self):
         from orders.views import restock_partial
+
         self._driver("D1")
         self._completed("a", [("Gummy", 2)])
         html = restock_partial(as_dispatcher(RequestFactory().get("/restock_partial"))).content.decode()
@@ -301,13 +339,19 @@ class TestRestockTab(DbTruthCase):
 class TestSetDriverLocationView(DbTruthCase):
     def test_sets_city_and_timestamp(self):
         from orders.views import set_driver_location_view
+
         driver = self._driver("D1")
-        set_driver_location_view(as_dispatcher(RequestFactory().post("/x", {"driver_id": driver.pk, "city": "Winters"})))
+        set_driver_location_view(
+            as_dispatcher(RequestFactory().post("/x", {"driver_id": driver.pk, "city": "Winters"}))
+        )
         driver.refresh_from_db()
         self.assertEqual((driver.current_city, driver.location_updated_at), ("Winters", self.BASE))
 
     def test_inactive_driver_is_a_404_not_a_server_error(self):
         from orders.views import set_driver_location_view
+
         driver = Driver.objects.create(name="Off", is_active=False)
         with self.assertRaises(Http404):
-            set_driver_location_view(as_dispatcher(RequestFactory().post("/x", {"driver_id": driver.pk, "city": "Winters"})))
+            set_driver_location_view(
+                as_dispatcher(RequestFactory().post("/x", {"driver_id": driver.pk, "city": "Winters"}))
+            )

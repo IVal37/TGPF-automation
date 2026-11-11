@@ -7,6 +7,7 @@ from django.test import SimpleTestCase, TransactionTestCase
 
 def _status_for():
     import importlib
+
     return importlib.import_module("orders.migrations.0011_backfill_order_status").status_for
 
 
@@ -38,6 +39,7 @@ class TestBackfillMapping(SimpleTestCase):
 
 class TestBackfillMigration(TransactionTestCase):
     """Runs the real migrations: seed rows at 0009, migrate to 0011, check each row."""
+
     migrate_from = [("orders", "0009_order_weedmaps_order_id")]
     migrate_to = [("orders", "0011_backfill_order_status")]
 
@@ -65,8 +67,9 @@ class TestBackfillMigration(TransactionTestCase):
         for order_id, (flags, _, _) in self.ROWS.items():
             flags = dict(flags)
             eta = datetime(2026, 7, 20, 14, 30) if flags.pop("eta", False) else None
-            Order.objects.create(order_id=order_id, city="Davis", order_date=datetime(2026, 7, 20, 14, 0),
-                                 eta_start=eta, **flags)
+            Order.objects.create(
+                order_id=order_id, city="Davis", order_date=datetime(2026, 7, 20, 14, 0), eta_start=eta, **flags
+            )
 
         executor = MigrationExecutor(connection)
         executor.migrate(self.migrate_to)
@@ -82,11 +85,16 @@ class TestBackfillRestockFlags(TransactionTestCase):
         executor.migrate(executor.loader.graph.leaf_nodes())
 
     def test_existing_orders_do_not_flood_the_restock_tab(self):
-        before, after = [("orders", "0011_backfill_order_status")], [("orders", "0012_restock_flags_driver_location_updated_at")]
+        before, after = (
+            [("orders", "0011_backfill_order_status")],
+            [("orders", "0012_restock_flags_driver_location_updated_at")],
+        )
         executor = MigrationExecutor(connection)
         executor.migrate(before)
         Old = executor.loader.project_state(before).apps.get_model("orders", "Order")
-        Old.objects.create(order_id="old", city="Davis", order_date=datetime(2026, 7, 1), status="completed", completed=True)
+        Old.objects.create(
+            order_id="old", city="Davis", order_date=datetime(2026, 7, 1), status="completed", completed=True
+        )
         executor = MigrationExecutor(connection)
         executor.migrate(after)
         New = executor.loader.project_state(after).apps.get_model("orders", "Order")

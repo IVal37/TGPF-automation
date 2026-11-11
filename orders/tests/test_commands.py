@@ -8,8 +8,9 @@ from django.test import SimpleTestCase, override_settings
 @override_settings(RESTOCK_TEST_MODE=True, TALKROUTE_TEST_PHONE="5305550100")
 class TestSendTestMessageInTestMode(SimpleTestCase):
     def test_refuses_to_send_anything(self):
-        with patch("orders.services.scrapers.talkroute.send_message") as sms, \
-             patch("orders.services.telegram.send_telegram_message") as telegram:
+        with patch("orders.services.scrapers.talkroute.send_message") as sms, patch(
+            "orders.services.telegram.send_telegram_message"
+        ) as telegram:
             for flag in ("--sms", "--telegram"):
                 with self.assertRaises(CommandError):
                     call_command("send_test_message", flag)

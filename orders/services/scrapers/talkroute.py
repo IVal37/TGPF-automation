@@ -21,7 +21,9 @@ from orders.services.scrapers.errors import at_commit, before_commit
 # order_ref names the order in failure logs/screenshots (never the phone number).
 def send_message(customer_number: str, dispatch_msg: str, order_ref=None) -> None:
     with browser_session(
-        "send_message", order_ref, {"profile.default_content_setting_values.media_stream_mic": BLOCK},
+        "send_message",
+        order_ref,
+        {"profile.default_content_setting_values.media_stream_mic": BLOCK},
     ) as (driver, wait):
         driver.get("https://my.talkroute.com/home/text_messages/")
 

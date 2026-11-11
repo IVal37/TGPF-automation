@@ -3,6 +3,7 @@
 The OLD_* values below are a verbatim copy of what orders/constants.py used to hard-code.
 They are the reference the seeded database must reproduce exactly.
 """
+
 import importlib
 import io
 from datetime import timedelta
@@ -22,21 +23,45 @@ from orders.models import City, CustomerFlag, SpecialAddress, TravelTime
 from orders.services import config, travel
 
 OLD_CITY_MINS = {
-    "American Canyon": Decimal("125.00"), "Brooks": Decimal("200.00"), "Davis": Decimal("25.00"),
-    "Dixon": Decimal("35.00"), "Dunnigan": Decimal("200.00"), "East Sacramento": Decimal("75.00"),
-    "Elk Grove": Decimal("65.00"), "Esparto": Decimal("100.00"), "Fairfield": Decimal("55.00"),
-    "Guinda": Decimal("250.00"), "Knights Landing": Decimal("125.00"), "Midtown Sacramento": Decimal("65.00"),
-    "Roseville": Decimal("175.00"), "Rocklin": Decimal("175.00"), "South Sacramento": Decimal("100.00"),
-    "Suisun City": Decimal("60.00"), "Vacaville": Decimal("45.00"), "Vallejo": Decimal("125.00"),
-    "West Sacramento": Decimal("55.00"), "Winters": Decimal("55.00"), "Woodland": Decimal("35.00"),
+    "American Canyon": Decimal("125.00"),
+    "Brooks": Decimal("200.00"),
+    "Davis": Decimal("25.00"),
+    "Dixon": Decimal("35.00"),
+    "Dunnigan": Decimal("200.00"),
+    "East Sacramento": Decimal("75.00"),
+    "Elk Grove": Decimal("65.00"),
+    "Esparto": Decimal("100.00"),
+    "Fairfield": Decimal("55.00"),
+    "Guinda": Decimal("250.00"),
+    "Knights Landing": Decimal("125.00"),
+    "Midtown Sacramento": Decimal("65.00"),
+    "Roseville": Decimal("175.00"),
+    "Rocklin": Decimal("175.00"),
+    "South Sacramento": Decimal("100.00"),
+    "Suisun City": Decimal("60.00"),
+    "Vacaville": Decimal("45.00"),
+    "Vallejo": Decimal("125.00"),
+    "West Sacramento": Decimal("55.00"),
+    "Winters": Decimal("55.00"),
+    "Woodland": Decimal("35.00"),
 }
 OLD_MERCHANT_PAY_CUSTOMERS = ("Imran Rahim", "Emmi Towns", "Chelsea Rosenkild")
 OLD_TRAVEL_BASE = {
-    ("Davis", "Dixon"): 15, ("Davis", "Fairfield"): 40, ("Davis", "Vacaville"): 35,
-    ("Davis", "Winters"): 30, ("Davis", "Woodland"): 20,
-    ("Dixon", "Fairfield"): 25, ("Dixon", "Vacaville"): 20, ("Dixon", "Winters"): 20, ("Dixon", "Woodland"): 25,
-    ("Fairfield", "Vacaville"): 15, ("Fairfield", "Winters"): 25, ("Fairfield", "Woodland"): 45,
-    ("Vacaville", "Winters"): 25, ("Vacaville", "Woodland"): 30, ("Winters", "Woodland"): 30,
+    ("Davis", "Dixon"): 15,
+    ("Davis", "Fairfield"): 40,
+    ("Davis", "Vacaville"): 35,
+    ("Davis", "Winters"): 30,
+    ("Davis", "Woodland"): 20,
+    ("Dixon", "Fairfield"): 25,
+    ("Dixon", "Vacaville"): 20,
+    ("Dixon", "Winters"): 20,
+    ("Dixon", "Woodland"): 25,
+    ("Fairfield", "Vacaville"): 15,
+    ("Fairfield", "Winters"): 25,
+    ("Fairfield", "Woodland"): 45,
+    ("Vacaville", "Winters"): 25,
+    ("Vacaville", "Woodland"): 30,
+    ("Winters", "Woodland"): 30,
 }
 
 
@@ -58,7 +83,9 @@ def old_is_third_st(shipping):
 
 def old_is_blocked(shipping):
     full_street = f"{shipping.get('number', '').strip()} {shipping.get('street', '').strip()}".strip()
-    return (full_street, shipping.get("zip", "").strip()) in {("526 3rd Street", "95616")} and not old_is_third_st(shipping)
+    return (full_street, shipping.get("zip", "").strip()) in {("526 3rd Street", "95616")} and not old_is_third_st(
+        shipping
+    )
 
 
 class TestSeededConfigMatchesTheOldConstants(TestCase):
@@ -159,14 +186,22 @@ class TestMatchSpecialAddress(TestCase):
 
     def test_an_address_added_in_admin_blocks_orders(self):
         SpecialAddress.objects.create(number="12", street_contains="elm", city="", zip="", kind="blocked")
-        self.assertEqual(config.match_special_address({"number": "12", "street": "Elm Court", "city": "Dixon"}), "blocked")
+        self.assertEqual(
+            config.match_special_address({"number": "12", "street": "Elm Court", "city": "Dixon"}), "blocked"
+        )
         self.assertIsNone(config.match_special_address({"number": "13", "street": "Elm Court", "city": "Dixon"}))
 
     def test_blank_city_and_zip_match_anything_but_a_set_one_must_match(self):
         SpecialAddress.objects.create(number="9", street_contains="oak", city="Dixon", zip="95620", kind="blocked")
-        self.assertEqual(config.match_special_address({"number": "9", "street": "Oak", "city": "dixon", "zip": "95620"}), "blocked")
-        self.assertIsNone(config.match_special_address({"number": "9", "street": "Oak", "city": "Davis", "zip": "95620"}))
-        self.assertIsNone(config.match_special_address({"number": "9", "street": "Oak", "city": "Dixon", "zip": "11111"}))
+        self.assertEqual(
+            config.match_special_address({"number": "9", "street": "Oak", "city": "dixon", "zip": "95620"}), "blocked"
+        )
+        self.assertIsNone(
+            config.match_special_address({"number": "9", "street": "Oak", "city": "Davis", "zip": "95620"})
+        )
+        self.assertIsNone(
+            config.match_special_address({"number": "9", "street": "Oak", "city": "Dixon", "zip": "11111"})
+        )
 
 
 class TestNewOrderUsesTheConfig(TestCase):
@@ -179,14 +214,16 @@ class TestNewOrderUsesTheConfig(TestCase):
 
         from orders.tests.helpers import POS_ORDER
         from orders.views import new_order
+
         payload = {**POS_ORDER, "shipping": {"city": "Davis", **shipping}}
         request = RequestFactory().post("/new_order", data=json.dumps(payload), content_type="application/json")
-        with patch("orders.services.intake.add_order") as add_order, \
-             patch("orders.services.intake.add_storefront_order") as storefront, \
-             patch("orders.services.intake.under_min_text", return_value="msg"), \
-             patch("orders.services.intake.is_under_min", return_value=True), \
-             patch("orders.tasks.send_message_task"), patch("orders.tasks.fill_order_notes_task"), \
-             patch("orders.tasks.prepare_order_task"):
+        with patch("orders.services.intake.add_order") as add_order, patch(
+            "orders.services.intake.add_storefront_order"
+        ) as storefront, patch("orders.services.intake.under_min_text", return_value="msg"), patch(
+            "orders.services.intake.is_under_min", return_value=True
+        ), patch("orders.tasks.send_message_task"), patch("orders.tasks.fill_order_notes_task"), patch(
+            "orders.tasks.prepare_order_task"
+        ):
             response = new_order(request, key=settings.WEBHOOK_SECRET)
         return response, add_order, storefront
 
@@ -209,6 +246,7 @@ class TestNewOrderUsesTheConfig(TestCase):
 
     def test_a_city_minimum_edited_in_the_database_takes_effect_immediately(self):
         from orders.services.pricing import is_under_min
+
         self.assertFalse(is_under_min(Decimal("60.00"), Decimal("0"), "Davis"))
         City.objects.filter(name="Davis").update(minimum=Decimal("100.00"))
         self.assertTrue(is_under_min(Decimal("60.00"), Decimal("0"), "Davis"))
@@ -284,21 +322,24 @@ class TestGoogleTravelTimes(TestCase):
 
     def test_fresh_google_row_makes_no_call(self):
         TravelTime.objects.filter(city_a="Davis", city_b="Fairfield").update(
-            minutes=44, source="google", fetched_at=timezone.now() - timedelta(days=29))
+            minutes=44, source="google", fetched_at=timezone.now() - timedelta(days=29)
+        )
         with patch.object(travel.requests, "get") as get:
             self.assertEqual(travel.get_travel_time("Davis", "Fairfield"), 44)
         get.assert_not_called()
 
     def test_stale_google_row_is_refreshed(self):
         TravelTime.objects.filter(city_a="Davis", city_b="Fairfield").update(
-            minutes=44, source="google", fetched_at=timezone.now() - timedelta(days=31))
+            minutes=44, source="google", fetched_at=timezone.now() - timedelta(days=31)
+        )
         minutes, get = self._get(_google_response(46))
         self.assertEqual(minutes, 46)
         self.assertEqual(TravelTime.objects.get(city_a="Davis", city_b="Fairfield").minutes, 46)
 
     def test_stale_row_is_kept_when_the_refresh_fails(self):
         TravelTime.objects.filter(city_a="Davis", city_b="Fairfield").update(
-            minutes=44, source="google", fetched_at=timezone.now() - timedelta(days=31))
+            minutes=44, source="google", fetched_at=timezone.now() - timedelta(days=31)
+        )
         with self.assertLogs("orders.services.travel", "WARNING"):
             minutes, _ = self._get(requests.Timeout("slow"))
         self.assertEqual(minutes, 44)
@@ -317,7 +358,9 @@ class TestGoogleTravelTimes(TestCase):
         }
         for label, failure in failures.items():
             travel.reset_failure_memo()
-            TravelTime.objects.filter(city_a="Davis", city_b="Fairfield").update(minutes=40, source="static", fetched_at=None)
+            TravelTime.objects.filter(city_a="Davis", city_b="Fairfield").update(
+                minutes=40, source="static", fetched_at=None
+            )
             with self.subTest(label), self.assertLogs("orders.services.travel", "WARNING"):
                 minutes, _ = self._get(failure)
             self.assertEqual(minutes, old_get_travel_time("Davis", "Fairfield"), label)
@@ -339,7 +382,9 @@ class TestGoogleTravelTimes(TestCase):
         self.assertEqual(get.call_count, 1)
 
     def test_the_api_key_never_appears_in_a_log_line(self):
-        leaky = requests.ConnectionError("HTTPSConnectionPool: url: /maps/api/distancematrix/json?key=test-key-123&origins=Davis")
+        leaky = requests.ConnectionError(
+            "HTTPSConnectionPool: url: /maps/api/distancematrix/json?key=test-key-123&origins=Davis"
+        )
         with self.assertLogs("orders.services.travel", "WARNING") as logs:
             self._get(leaky)
         self.assertNotIn("test-key-123", "\n".join(logs.output))
@@ -383,9 +428,12 @@ class TestRefreshTravelTimesCommand(TestCase):
         def respond(url, params, timeout):
             destinations = params["destinations"].split("|")
             response = MagicMock()
-            response.json.return_value = {"status": "OK", "rows": [{"elements": [
-                {"status": "OK", "duration": {"value": minutes * 60}} for _ in destinations]}]}
+            response.json.return_value = {
+                "status": "OK",
+                "rows": [{"elements": [{"status": "OK", "duration": {"value": minutes * 60}} for _ in destinations]}],
+            }
             return response
+
         return respond
 
     def test_without_a_key_it_says_so_and_does_nothing(self):
@@ -434,11 +482,14 @@ class TestAdmin(TestCase):
 
     def test_the_four_models_are_registered_with_list_editable(self):
         from django.contrib import admin
+
         for model in (City, CustomerFlag, SpecialAddress, TravelTime):
             model_admin = admin.site._registry[model]
             self.assertTrue(model_admin.list_editable, model.__name__)
             self.assertTrue(set(model_admin.list_editable) <= set(model_admin.list_display), model.__name__)
-            self.assertFalse(set(model_admin.list_editable) & set(model_admin.get_list_display_links(None, model_admin.list_display)))
+            self.assertFalse(
+                set(model_admin.list_editable) & set(model_admin.get_list_display_links(None, model_admin.list_display))
+            )
 
     def test_each_changelist_renders(self):
         for name in ("city", "customerflag", "specialaddress", "traveltime"):
@@ -453,8 +504,13 @@ class TestAdmin(TestCase):
     def test_a_city_minimum_can_be_edited_from_the_list(self):
         city = City.objects.get(name="Davis")
         rows = City.objects.order_by("name")
-        data = {"form-TOTAL_FORMS": rows.count(), "form-INITIAL_FORMS": rows.count(), "form-MIN_NUM_FORMS": 0,
-                "form-MAX_NUM_FORMS": 1000, "_save": "Save"}
+        data = {
+            "form-TOTAL_FORMS": rows.count(),
+            "form-INITIAL_FORMS": rows.count(),
+            "form-MIN_NUM_FORMS": 0,
+            "form-MAX_NUM_FORMS": 1000,
+            "_save": "Save",
+        }
         for i, row in enumerate(rows):
             data[f"form-{i}-id"] = row.pk
             data[f"form-{i}-minimum"] = "99.00" if row.pk == city.pk else str(row.minimum)
@@ -478,13 +534,27 @@ class TestSeedMigration(TransactionTestCase):
         executor.migrate([("orders", "0014_visible_failures")])
         executor = MigrationExecutor(connection)
         executor.migrate([("orders", "0016_seed_business_config")])
-        self.assertEqual((City.objects.count(), CustomerFlag.objects.count(),
-                          SpecialAddress.objects.count(), TravelTime.objects.count()), (21, 4, 3, 15))
+        self.assertEqual(
+            (
+                City.objects.count(),
+                CustomerFlag.objects.count(),
+                SpecialAddress.objects.count(),
+                TravelTime.objects.count(),
+            ),
+            (21, 4, 3, 15),
+        )
         # running the seed again changes nothing
         seed = importlib.import_module("orders.migrations.0016_seed_business_config").seed
         seed(executor.loader.project_state([("orders", "0016_seed_business_config")]).apps, None)
-        self.assertEqual((City.objects.count(), CustomerFlag.objects.count(),
-                          SpecialAddress.objects.count(), TravelTime.objects.count()), (21, 4, 3, 15))
+        self.assertEqual(
+            (
+                City.objects.count(),
+                CustomerFlag.objects.count(),
+                SpecialAddress.objects.count(),
+                TravelTime.objects.count(),
+            ),
+            (21, 4, 3, 15),
+        )
 
     def test_hand_edited_values_are_not_reset_by_a_second_run_of_unrelated_rows(self):
         City.objects.filter(name="Davis").update(minimum=Decimal("99.00"))

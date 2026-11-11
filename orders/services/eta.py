@@ -27,6 +27,7 @@ def apply_scheduled_window(order: Order, start: datetime, end: datetime) -> bool
     order.set_etas(start, end)
     return True
 
+
 # works out an order's ETA window and saves it. A customer who picked a delivery
 # window keeps it when it is no earlier than the estimate (see apply_scheduled_window).
 def estimate_window(order_id: str) -> None:
@@ -49,13 +50,13 @@ def get_eta(order_id: str) -> Tuple[str, str]:
     # get sorted list of cities driver needs to travel to
     city_travel_time = []
     for iter_city in driver_queue_by_city:
-        city_travel_time.append({'city': iter_city, 'time': get_travel_time(driver_location, iter_city)})
-    city_travel_time.sort(key=lambda entry: entry['time'])
+        city_travel_time.append({"city": iter_city, "time": get_travel_time(driver_location, iter_city)})
+    city_travel_time.sort(key=lambda entry: entry["time"])
 
     # create one master list of orders sorted by city and within city
     orders_in_order: List[str] = []
     for entry in city_travel_time:
-        city = entry['city']
+        city = entry["city"]
         orders_in_order.extend(driver_queue_by_city[city])
 
     # core logic for time to order delivery
@@ -77,7 +78,9 @@ def get_eta(order_id: str) -> Tuple[str, str]:
     # so later customers see a tighter, more accurate window rather than a padded one.
     # the shift is capped by the *actual* travel minutes since the front of the route, so it can
     # never outrun the real gap between stops and invert/collapse two orders' windows
-    first_order_minutes = get_eta_minutes(driver_location, orders_in_order, orders_in_order[0], cities) if orders_in_order else 0
+    first_order_minutes = (
+        get_eta_minutes(driver_location, orders_in_order, orders_in_order[0], cities) if orders_in_order else 0
+    )
     minutes_since_front = max(0, minutes_to_order - first_order_minutes)
     anchor_shift = min(window_mins * 0.5, minutes_since_front)
     start_timestamp = clamp_to_opening(round_time(clamped_eta - timedelta(minutes=anchor_shift)))
@@ -86,6 +89,7 @@ def get_eta(order_id: str) -> Tuple[str, str]:
     order.set_etas(start_timestamp, end_timestamp)
 
     return format_time(start_timestamp), format_time(end_timestamp)
+
 
 # cities: {order_id: city} for the stops in order_ids_list; looked up when not given
 def get_eta_minutes(start_city: str, order_ids_list: List[str], search_id: str, cities=None) -> int:

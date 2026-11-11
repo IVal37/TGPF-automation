@@ -13,6 +13,7 @@ CODE_SENDER = "donotreply@greenbaxmarketplace.io"
 
 CODE_RE = re.compile(r"\b(\d{6})\b")
 
+
 def fetch_2fa_code(timeout: int = 120, poll: int = 5) -> str:
     end = time.time() + timeout
     with imaplib.IMAP4_SSL(IMAP_HOST) as M:
@@ -40,4 +41,3 @@ def fetch_2fa_code(timeout: int = 120, poll: int = 5) -> str:
                         return m.group(1)
             time.sleep(poll)
     raise TimeoutError("No 2FA code found")
-

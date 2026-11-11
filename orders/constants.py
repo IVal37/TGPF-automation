@@ -6,6 +6,7 @@ from decimal import Decimal
 # lives in the database: see orders/services/config.py and orders/services/travel.py,
 # and edit it in Django admin.
 
+
 # ── Payment types (the labels WebJoint and our own code use) ─────────────────
 class PaymentType:
     CASH = "Cash"
@@ -50,12 +51,12 @@ DIRECT_SOURCES = ("POS", "Website")
 FSA_FSM_NAMES = {"frank sinatra adult", "frank sinatra medical"}
 
 VALEDICTIONS = [
-                    'Thanks again for your order!',
-                    'We appreciate your business!',
-                    'Have a great day!',
-                    'We hope you enjoy your order!',
-                    'Thanks for choosing TGPF!',
-                    'Thanks!',
-                    'Enjoy!',
-                    'Have a good one!',
-                ]
+    "Thanks again for your order!",
+    "We appreciate your business!",
+    "Have a great day!",
+    "We hope you enjoy your order!",
+    "Thanks for choosing TGPF!",
+    "Thanks!",
+    "Enjoy!",
+    "Have a good one!",
+]

@@ -1,11 +1,12 @@
 """Business hours. WEEKDAY_CLOSE and SUNDAY_CLOSE are also used by the Celery beat schedule
 (TGPFflows/settings.py) so the closing-time restock digest follows these hours."""
+
 from datetime import datetime
 
 _OPEN_HOUR = 10
-_OPEN_MINUTE = 30   # earliest ETA start (gives driver time to get going)
+_OPEN_MINUTE = 30  # earliest ETA start (gives driver time to get going)
 WEEKDAY_CLOSE = 22  # 10pm Mon-Sat
-SUNDAY_CLOSE = 17   # 5pm Sun
+SUNDAY_CLOSE = 17  # 5pm Sun
 
 
 def closing_dt(ref: datetime) -> datetime:

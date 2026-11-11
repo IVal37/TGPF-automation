@@ -11,6 +11,7 @@ After an intentional scraper change, rewrite the goldens with:
 
 and review/explain every diff before accepting it.
 """
+
 import difflib
 import json
 import logging
@@ -136,10 +137,15 @@ class FakeChrome:
     scripts = {}
 
     def __init__(self, options=None):
-        self.trace.append(["chrome", {
-            "arguments": list(options.arguments) if options else [],
-            "prefs": options.experimental_options if options else {},
-        }])
+        self.trace.append(
+            [
+                "chrome",
+                {
+                    "arguments": list(options.arguments) if options else [],
+                    "prefs": options.experimental_options if options else {},
+                },
+            ]
+        )
 
     def get(self, url):
         self.trace.append(["get", url])
@@ -213,9 +219,15 @@ class ScraperTraceTests(SimpleTestCase):
 
     def run_scenario(self, name, fn, dom=None, scripts=None, extra_patches=()):
         trace = []
-        chrome = type("ScenarioChrome", (FakeChrome,), {
-            "trace": trace, "dom": dom or {}, "scripts": scripts or {},
-        })
+        chrome = type(
+            "ScenarioChrome",
+            (FakeChrome,),
+            {
+                "trace": trace,
+                "dom": dom or {},
+                "scripts": scripts or {},
+            },
+        )
         handler = _TraceLogHandler(trace)
         orders_logger = logging.getLogger("orders")
         with ExitStack() as stack:
@@ -252,16 +264,21 @@ class ScraperTraceTests(SimpleTestCase):
         self.assertTrue(path.exists(), f"missing golden trace {path}; generate with UPDATE_TRACES=1")
         expected = path.read_text(encoding="utf-8")
         if actual != expected:
-            diff = "".join(difflib.unified_diff(
-                expected.splitlines(True), actual.splitlines(True),
-                fromfile=f"golden/{name}.json", tofile="actual", n=3,
-            ))
+            diff = "".join(
+                difflib.unified_diff(
+                    expected.splitlines(True),
+                    actual.splitlines(True),
+                    fromfile=f"golden/{name}.json",
+                    tofile="actual",
+                    n=3,
+                )
+            )
             self.fail(f"scraper trace for {name} changed:\n{diff}")
 
     # ── webjoint ──────────────────────────────────────────────────────────
 
     def test_fill_order_notes(self):
-        notes_xpath = '/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]'
+        notes_xpath = "/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]"
         self.run_scenario(
             "webjoint_fill_order_notes",
             lambda: webjoint.fill_order_notes(ORDER_ID, "test note"),
@@ -292,9 +309,15 @@ class ScraperTraceTests(SimpleTestCase):
 
     def test_open_order_raises_on_mismatched_page(self):
         trace = []
-        chrome = type("ScenarioChrome", (FakeChrome,), {
-            "trace": trace, "dom": order_page(OTHER_ORDER_ID), "scripts": {},
-        })
+        chrome = type(
+            "ScenarioChrome",
+            (FakeChrome,),
+            {
+                "trace": trace,
+                "dom": order_page(OTHER_ORDER_ID),
+                "scripts": {},
+            },
+        )
         driver = chrome()
         wait = WebDriverWait(driver, 10)
         with patch("selenium.webdriver.support.wait.time", FakeClock()):
@@ -323,8 +346,9 @@ class ScraperTraceTests(SimpleTestCase):
             webjoint._open_order(driver, WebDriverWait(driver, 10), "")
 
     def test_pull_from_chiles_available(self):
-        rows = '//tbody/tr'
+        rows = "//tbody/tr"
         dialog = '//div[@role="dialog"]'
+
         def qty(i):
             return f"packagequantities[{i}].nfrompackagequantity"
 
@@ -346,18 +370,23 @@ class ScraperTraceTests(SimpleTestCase):
         }
         self.run_scenario(
             "webjoint_pull_from_chiles_available",
-            lambda: webjoint.pull_from_chiles(ORDER_ID), dom=dom, scripts=scripts,
+            lambda: webjoint.pull_from_chiles(ORDER_ID),
+            dom=dom,
+            scripts=scripts,
         )
 
     def test_pull_from_chiles_kit_removal(self):
         dom = {
             **order_page(),
-            (By.XPATH, '//tbody/tr'): [spec("Item K\nStarting Shift Mobile Inventory")],
-            (By.XPATH, '//*[@role="option" and contains(.,"@ Starting Shift Mobile Inventory")]'):
-                [spec("@ Starting Shift Mobile Inventory")],
+            (By.XPATH, "//tbody/tr"): [spec("Item K\nStarting Shift Mobile Inventory")],
+            (By.XPATH, '//*[@role="option" and contains(.,"@ Starting Shift Mobile Inventory")]'): [
+                spec("@ Starting Shift Mobile Inventory")
+            ],
         }
         self.run_scenario(
-            "webjoint_pull_from_chiles_kit_removal", lambda: webjoint.pull_from_chiles(ORDER_ID), dom=dom,
+            "webjoint_pull_from_chiles_kit_removal",
+            lambda: webjoint.pull_from_chiles(ORDER_ID),
+            dom=dom,
         )
 
     def test_dispatch_to_driver(self):
@@ -393,9 +422,7 @@ class ScraperTraceTests(SimpleTestCase):
 
     @staticmethod
     def _product_dom(options):
-        submit = (
-            f'//button[@type="submit"][{ci_contains("create product")} or {ci_contains("save changes")}]'
-        )
+        submit = f'//button[@type="submit"][{ci_contains("create product")} or {ci_contains("save changes")}]'
         return {
             (By.XPATH, '//*[@role="option"]'): [spec(t) for t in options],
             (By.XPATH, submit): [spec("Create Product")],
@@ -408,7 +435,8 @@ class ScraperTraceTests(SimpleTestCase):
         product = self._product(cannabinoids={"THC": "34.5%", "Total CBD": "1mg"})
         self.run_scenario(
             "webjoint_create_product_full",
-            lambda: webjoint.create_product([product]), dom=dom,
+            lambda: webjoint.create_product([product]),
+            dom=dom,
         )
 
     def test_create_product_minimal(self):
@@ -416,7 +444,8 @@ class ScraperTraceTests(SimpleTestCase):
         product = self._product(lineage="", strain="", for_sale="No", sale_discount="0%")
         self.run_scenario(
             "webjoint_create_product_minimal",
-            lambda: webjoint.create_product([product]), dom=dom,
+            lambda: webjoint.create_product([product]),
+            dom=dom,
         )
 
     def test_set_webhooks(self):
@@ -453,7 +482,7 @@ class ScraperTraceTests(SimpleTestCase):
         self.assert_raised("RuntimeError", "send message")
 
     def test_fill_order_notes_fails_before_save(self):
-        notes_xpath = '/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]'
+        notes_xpath = "/html/body/div[4]/div[2]/div[2]/form/div[1]/div/div/div/div/div/textarea[3]"
         self.run_scenario(
             "webjoint_fill_order_notes_fails_before_save",
             lambda: webjoint.fill_order_notes(ORDER_ID, "test note"),
@@ -462,7 +491,7 @@ class ScraperTraceTests(SimpleTestCase):
         self.assert_raised("BeforeCommitError", "edit notes")
 
     def test_fill_order_notes_fails_at_the_save_click(self):
-        save = '/html/body/div[4]/div[2]/div[2]/form/div[2]/button'
+        save = "/html/body/div[4]/div[2]/div[2]/form/div[2]/button"
         self.run_scenario(
             "webjoint_fill_order_notes_fails_at_save",
             lambda: webjoint.fill_order_notes(ORDER_ID, "test note"),
@@ -471,7 +500,7 @@ class ScraperTraceTests(SimpleTestCase):
         self.assert_raised("RuntimeError", "save notes")
 
     def test_dispatch_fails_before_confirm(self):
-        confirm = '/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]'
+        confirm = "/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]"
         self.run_scenario(
             "webjoint_dispatch_to_driver_fails_before_confirm",
             lambda: webjoint.dispatch_to_driver(ORDER_ID),
@@ -480,7 +509,7 @@ class ScraperTraceTests(SimpleTestCase):
         self.assert_raised("BeforeCommitError", "assign driver")
 
     def test_dispatch_fails_at_the_confirm_click(self):
-        confirm = '/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]'
+        confirm = "/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]"
         self.run_scenario(
             "webjoint_dispatch_to_driver_fails_at_confirm",
             lambda: webjoint.dispatch_to_driver(ORDER_ID),
@@ -491,12 +520,13 @@ class ScraperTraceTests(SimpleTestCase):
     def test_pull_from_chiles_row_fails_before_any_save(self):
         dom = {
             **order_page(),
-            (By.XPATH, '//tbody/tr'): [spec("Item A\nStarting Shift Mobile Inventory")],
-            (By.CSS_SELECTOR, 'div.css-1j4kz5m'): MISSING,
+            (By.XPATH, "//tbody/tr"): [spec("Item A\nStarting Shift Mobile Inventory")],
+            (By.CSS_SELECTOR, "div.css-1j4kz5m"): MISSING,
         }
         self.run_scenario(
             "webjoint_pull_from_chiles_fails_before_save",
-            lambda: webjoint.pull_from_chiles(ORDER_ID), dom=dom,
+            lambda: webjoint.pull_from_chiles(ORDER_ID),
+            dom=dom,
         )
         self.assert_raised("BeforeCommitError", "row 0")
 
@@ -504,7 +534,7 @@ class ScraperTraceTests(SimpleTestCase):
         edit = './/button[.//*[local-name()="path"][contains(@d,"M3 17.25")]]'
         dom = {
             **order_page(),
-            (By.XPATH, '//tbody/tr'): [
+            (By.XPATH, "//tbody/tr"): [
                 spec("Item A\nStarting Shift Mobile Inventory"),
                 spec("Item B\nStarting Shift Mobile Inventory", dom={(By.XPATH, edit): MISSING}),
             ],
@@ -512,7 +542,8 @@ class ScraperTraceTests(SimpleTestCase):
         }
         self.run_scenario(
             "webjoint_pull_from_chiles_fails_after_save",
-            lambda: webjoint.pull_from_chiles(ORDER_ID), dom=dom,
+            lambda: webjoint.pull_from_chiles(ORDER_ID),
+            dom=dom,
         )
         # row 0 was saved, so the failure of row 1 must not be retried automatically
         self.assert_raised("NoSuchElementException", "row 1")
@@ -522,7 +553,8 @@ class ScraperTraceTests(SimpleTestCase):
         dom = {**self._product_dom([]), (By.XPATH, submit): MISSING}
         self.run_scenario(
             "webjoint_create_product_fails_before_submit",
-            lambda: webjoint.create_product([self._product()]), dom=dom,
+            lambda: webjoint.create_product([self._product()]),
+            dom=dom,
         )
         self.assert_raised("BeforeCommitError", "create product 'Beach Party | Refined Live Resin | All-In-One'")
 
@@ -532,7 +564,8 @@ class ScraperTraceTests(SimpleTestCase):
         second = self._product(lineage="Sativa", product_name="Second")
         self.run_scenario(
             "webjoint_create_product_fails_after_submit",
-            lambda: webjoint.create_product([first, second]), dom=dom,
+            lambda: webjoint.create_product([first, second]),
+            dom=dom,
         )
         self.assert_raised("ValueError", "create product 'Second'")
 
@@ -542,7 +575,9 @@ class ScraperTraceTests(SimpleTestCase):
         self.run_scenario(
             "webjoint_set_webhooks_fails_at_save",
             lambda: webjoint.set_webhooks("https://example.ngrok.app"),
-            extra_patches=[patch.object(webjoint, "click_with_js_fallback", side_effect=RuntimeError("save click failed"))],
+            extra_patches=[
+                patch.object(webjoint, "click_with_js_fallback", side_effect=RuntimeError("save click failed"))
+            ],
         )
         self.assert_raised("RuntimeError", "save webhooks")
 

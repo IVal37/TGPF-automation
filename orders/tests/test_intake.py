@@ -11,7 +11,9 @@ from orders.models import Order
 from orders.tests.helpers import POS_ORDER, SAMPLE_ORDER, WJ_ID, DbTruthCase
 
 
-class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, special addresses) is read from the database
+class TestNewOrderView(
+    TestCase
+):  # config (city minimums, flagged customers, special addresses) is read from the database
     def setUp(self):
         self.factory = RequestFactory()
 
@@ -24,8 +26,11 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
 
     # the browser tasks are patched where they are defined; everything else where intake uses it
     TASK_NAMES = (
-        "fill_order_notes_task", "prepare_order_task", "resolve_payment_type_task",
-        "send_message_task", "send_merchant_pay_link_task",
+        "fill_order_notes_task",
+        "prepare_order_task",
+        "resolve_payment_type_task",
+        "send_message_task",
+        "send_merchant_pay_link_task",
     )
 
     def _run(self, payload=None, **overrides):
@@ -47,11 +52,15 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
         defaults.update(overrides)
 
         from orders.views import new_order
+
         with ExitStack() as stack:
             mocks = {
-                name: stack.enter_context(patch(
-                    f"orders.tasks.{name}" if name in self.TASK_NAMES else f"orders.services.intake.{name}", **kwargs,
-                ))
+                name: stack.enter_context(
+                    patch(
+                        f"orders.tasks.{name}" if name in self.TASK_NAMES else f"orders.services.intake.{name}",
+                        **kwargs,
+                    )
+                )
                 for name, kwargs in defaults.items()
             }
             response = new_order(self._post(payload), key=settings.WEBHOOK_SECRET)
@@ -85,9 +94,15 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
     def test_third_st_order_routes_to_storefront_not_dispatch(self):
         # 526 3rd St Davis is the storefront's own address — no driver, no ETA,
         # no dispatch SMS, just persisted for the nightly restock digest
-        payload = dict(SAMPLE_ORDER, shipping={
-            "city": "Davis", "number": "526", "street": "3rd Street", "zip": "95616",
-        })
+        payload = dict(
+            SAMPLE_ORDER,
+            shipping={
+                "city": "Davis",
+                "number": "526",
+                "street": "3rd Street",
+                "zip": "95616",
+            },
+        )
         _, mocks = self._run(payload=payload)
         mocks["add_storefront_order"].assert_called_once()
         mocks["add_order"].assert_not_called()
@@ -96,9 +111,15 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
     def test_non_third_st_davis_order_still_dispatches_normally(self):
         # sanity check the routing isn't overbroad — an ordinary Davis delivery
         # address must still go through the normal dispatch flow
-        payload = dict(SAMPLE_ORDER, shipping={
-            "city": "Davis", "number": "100", "street": "Main Street", "zip": "95616",
-        })
+        payload = dict(
+            SAMPLE_ORDER,
+            shipping={
+                "city": "Davis",
+                "number": "100",
+                "street": "Main Street",
+                "zip": "95616",
+            },
+        )
         _, mocks = self._run(payload=payload)
         mocks["add_order"].assert_called_once()
         mocks["add_storefront_order"].assert_not_called()
@@ -126,13 +147,15 @@ class TestNewOrderView(TestCase):  # config (city minimums, flagged customers, s
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_weedmaps_order_enqueues_payment_lookup_and_never_scrapes_inline(self):
-        with patch("orders.services.scrapers.weedmaps.get_wm_payment_type") as scraper, \
-             patch("orders.tasks.get_wm_payment_type") as task_scraper:
+        with patch("orders.services.scrapers.weedmaps.get_wm_payment_type") as scraper, patch(
+            "orders.tasks.get_wm_payment_type"
+        ) as task_scraper:
             _, mocks = self._run()
         mocks["resolve_payment_type_task"].delay.assert_called_once_with("6767008", write_notes=False)
         scraper.assert_not_called()
         task_scraper.assert_not_called()
         from orders import views
+
         self.assertFalse(hasattr(views, "get_wm_payment_type"))
 
     @override_settings(RESTOCK_TEST_MODE=False)
@@ -254,28 +277,37 @@ class TestDuplicateWebhook(TestCase):
 
     def _post(self, payload):
         from orders.views import new_order
+
         request = RequestFactory().post(
-            "/new_order", data=json.dumps(payload), content_type="application/json",
+            "/new_order",
+            data=json.dumps(payload),
+            content_type="application/json",
         )
         with ExitStack() as stack:
             mocks = {
                 name: stack.enter_context(patch(f"orders.services.intake.{name}"))
                 for name in ("add_order", "add_storefront_order", "estimate_window", "under_min_text", "is_under_min")
             }
-            mocks.update({
-                name: stack.enter_context(patch(f"orders.tasks.{name}"))
-                for name in (
-                    "prepare_order_task", "resolve_payment_type_task",
-                    "fill_order_notes_task", "send_message_task", "send_merchant_pay_link_task",
-                )
-            })
+            mocks.update(
+                {
+                    name: stack.enter_context(patch(f"orders.tasks.{name}"))
+                    for name in (
+                        "prepare_order_task",
+                        "resolve_payment_type_task",
+                        "fill_order_notes_task",
+                        "send_message_task",
+                        "send_merchant_pay_link_task",
+                    )
+                }
+            )
             mocks["is_under_min"].return_value = False
             response = new_order(request, key=settings.WEBHOOK_SECRET)
         return response, mocks
 
     def _existing(self, order_id):
-        Order.objects.create(order_id=order_id, customer_name="Hailey White", city="Davis",
-                             order_date=datetime(2026, 7, 20, 14, 0, 0))
+        Order.objects.create(
+            order_id=order_id, customer_name="Hailey White", city="Davis", order_date=datetime(2026, 7, 20, 14, 0, 0)
+        )
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_duplicate_creates_one_order_and_queues_nothing(self):
@@ -291,7 +323,8 @@ class TestDuplicateWebhook(TestCase):
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_duplicate_third_st_order_is_also_ignored(self):
         payload = dict(
-            POS_ORDER, shipping={"number": "526", "street": "Third St", "city": "Davis", "zip": "95616"},
+            POS_ORDER,
+            shipping={"number": "526", "street": "Third St", "city": "Davis", "zip": "95616"},
         )
         self._existing("6767008")
         response, mocks = self._post(payload)
@@ -305,8 +338,11 @@ class TestDuplicateWebhook(TestCase):
         mocks["add_order"].assert_called_once()
 
 
-class TestNewOrderStatus(TestCase):  # config (city minimums, flagged customers, special addresses) is read from the database
+class TestNewOrderStatus(
+    TestCase
+):  # config (city minimums, flagged customers, special addresses) is read from the database
     """The initial status new_order hands to add_order (reuses TestNewOrderView's mocks)."""
+
     TASK_NAMES = TestNewOrderView.TASK_NAMES
     _run = TestNewOrderView._run
     _post = TestNewOrderView._post
@@ -330,21 +366,38 @@ class TestNewOrderWithNoDriver(DbTruthCase):
 
     def _post(self, payload):
         from orders.views import new_order
+
         request = RequestFactory().post("/new_order", data=json.dumps(payload), content_type="application/json")
         with ExitStack() as stack:
-            mocks = {name: stack.enter_context(patch(f"orders.tasks.{name}")) for name in (
-                "prepare_order_task", "resolve_payment_type_task", "fill_order_notes_task",
-                "send_message_task", "send_merchant_pay_link_task",
-            )}
+            mocks = {
+                name: stack.enter_context(patch(f"orders.tasks.{name}"))
+                for name in (
+                    "prepare_order_task",
+                    "resolve_payment_type_task",
+                    "fill_order_notes_task",
+                    "send_message_task",
+                    "send_merchant_pay_link_task",
+                )
+            }
             from orders.services import intake
+
             mocks["estimate_window"] = stack.enter_context(
-                patch("orders.services.intake.estimate_window", wraps=intake.estimate_window))
+                patch("orders.services.intake.estimate_window", wraps=intake.estimate_window)
+            )
             response = new_order(request, key=settings.WEBHOOK_SECRET)
         return response, mocks
 
     def _payload(self, **extra):
-        return {**POS_ORDER, "id": 7001, "created": self.BASE.isoformat() + "Z", "shipping": {"city": "Davis"},
-                "subtotal": 500, "total": 500, "discount": 0, **extra}
+        return {
+            **POS_ORDER,
+            "id": 7001,
+            "created": self.BASE.isoformat() + "Z",
+            "shipping": {"city": "Davis"},
+            "subtotal": 500,
+            "total": 500,
+            "discount": 0,
+            **extra,
+        }
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_unassigned_order_is_saved_without_an_eta_and_skips_the_eta_estimate(self):
@@ -378,8 +431,11 @@ class TestNewOrderWithNoDriver(DbTruthCase):
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_scheduled_window_is_stored_for_later(self):
-        cart = {"deliveryTiming": "Scheduled", "scheduledStart": "2026-07-20T22:00:00.000Z",
-                "scheduledEnd": "2026-07-20T23:00:00.000Z"}
+        cart = {
+            "deliveryTiming": "Scheduled",
+            "scheduledStart": "2026-07-20T22:00:00.000Z",
+            "scheduledEnd": "2026-07-20T23:00:00.000Z",
+        }
         with self.assertLogs("orders.services.engine", "WARNING"):
             self._post(self._payload(cart=cart))
         order = Order.objects.get(order_id="7001")
@@ -399,6 +455,7 @@ class TestNewOrderWithNoDriver(DbTruthCase):
 class TestAddStorefrontOrder(TestCase):
     def test_creates_completed_storefront_order_with_items(self):
         from orders.services.engine import add_storefront_order
+
         add_storefront_order(
             order_id="s1",
             customer_name="Walk In",

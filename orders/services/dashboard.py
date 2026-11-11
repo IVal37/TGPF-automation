@@ -1,4 +1,5 @@
 """What the dashboard shows: the Dispatch Queue cards and the driver panel (read side)."""
+
 from __future__ import annotations
 
 from typing import Dict, List
@@ -29,25 +30,27 @@ def pending_cards() -> List[Dict]:
         unassigned = order.driver_id is None
         in_queue = order.status in QUEUE_STATUSES
         companions = list(order.linked_companions.all())
-        cards.append({
-            "order": order,
-            "unassigned": unassigned,
-            # waiting for a dispatcher (approve + send); other cards are only here
-            # because they are sending right now or have an error to show
-            "in_queue": in_queue,
-            "sending": order.status == OrderStatus.SENDING,
-            # an unassigned order that was texted anyway (under-min, or its driver
-            # was switched off after the dispatch text went out)
-            "already_texted": unassigned and order.status in (OrderStatus.SENDING, OrderStatus.SENT),
-            "eta_start_value": order.eta_start.strftime("%H:%M") if order.eta_start else "",
-            "eta_end_value": order.eta_end.strftime("%H:%M") if order.eta_end else "",
-            "past_closing": in_queue and bool(order.eta_start) and is_past_closing(order.eta_start),
-            "is_fsa_fsm": fsa_fsm,
-            # set once an FSA/FSM order is linked to this (a real customer's) order as the
-            # second part of a legal-limit split
-            "linked_companion": companions[0] if companions else None,
-            "link_targets": link_targets if fsa_fsm else [],
-        })
+        cards.append(
+            {
+                "order": order,
+                "unassigned": unassigned,
+                # waiting for a dispatcher (approve + send); other cards are only here
+                # because they are sending right now or have an error to show
+                "in_queue": in_queue,
+                "sending": order.status == OrderStatus.SENDING,
+                # an unassigned order that was texted anyway (under-min, or its driver
+                # was switched off after the dispatch text went out)
+                "already_texted": unassigned and order.status in (OrderStatus.SENDING, OrderStatus.SENT),
+                "eta_start_value": order.eta_start.strftime("%H:%M") if order.eta_start else "",
+                "eta_end_value": order.eta_end.strftime("%H:%M") if order.eta_end else "",
+                "past_closing": in_queue and bool(order.eta_start) and is_past_closing(order.eta_start),
+                "is_fsa_fsm": fsa_fsm,
+                # set once an FSA/FSM order is linked to this (a real customer's) order as the
+                # second part of a legal-limit split
+                "linked_companion": companions[0] if companions else None,
+                "link_targets": link_targets if fsa_fsm else [],
+            }
+        )
     return cards
 
 

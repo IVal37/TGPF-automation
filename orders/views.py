@@ -67,34 +67,44 @@ def _pk(value) -> int:
 
 # ── Dashboard pages ──────────────────────────────────────────────────────────
 
+
 @login_required
 def order_list(request: HttpRequest) -> HttpResponse:
-    return render(request, 'orders/order_list.html', {
-        **restock.restock_context(),
-        'active_drivers': list(queries.active_drivers()),
-        'drivers': dashboard.driver_panel(),
-        'notices': Notice.objects.filter(dismissed=False).order_by('-created_at')[:10],
-        'cities': cities(),
-        'pending_orders': dashboard.pending_cards(),
-    })
+    return render(
+        request,
+        "orders/order_list.html",
+        {
+            **restock.restock_context(),
+            "active_drivers": list(queries.active_drivers()),
+            "drivers": dashboard.driver_panel(),
+            "notices": Notice.objects.filter(dismissed=False).order_by("-created_at")[:10],
+            "cities": cities(),
+            "pending_orders": dashboard.pending_cards(),
+        },
+    )
 
 
 @login_required
 def pending_orders_partial(request: HttpRequest) -> HttpResponse:
     """Just the dispatch-queue cards, polled by the dashboard's JS to auto-refresh that tab."""
-    return render(request, 'orders/_pending_orders.html', {
-        'pending_orders': dashboard.pending_cards(),
-        'active_drivers': list(queries.active_drivers()),
-    })
+    return render(
+        request,
+        "orders/_pending_orders.html",
+        {
+            "pending_orders": dashboard.pending_cards(),
+            "active_drivers": list(queries.active_drivers()),
+        },
+    )
 
 
 @login_required
 def restock_partial(request: HttpRequest) -> HttpResponse:
     """Just the completed-orders/restock-list content, polled by the dashboard's JS."""
-    return render(request, 'orders/_restock.html', restock.restock_context())
+    return render(request, "orders/_restock.html", restock.restock_context())
 
 
 # ── Drivers ──────────────────────────────────────────────────────────────────
+
 
 @login_required
 @require_http_methods(["POST"])
@@ -155,12 +165,16 @@ def add_shell_order_view(request: HttpRequest) -> HttpResponse:
 
 # ── Dispatch Queue actions ───────────────────────────────────────────────────
 
+
 @login_required
 @require_http_methods(["POST"])
 def send_dispatch_msg_view(request: HttpRequest) -> HttpResponse:
     return _run(
-        request, dispatch_queue.send_dispatch,
-        request.POST.get("order_id"), request.POST.get("eta_start", ""), request.POST.get("eta_end", ""),
+        request,
+        dispatch_queue.send_dispatch,
+        request.POST.get("order_id"),
+        request.POST.get("eta_start", ""),
+        request.POST.get("eta_end", ""),
         as_cash=bool(request.POST.get("as_cash")),
     )
 
@@ -238,6 +252,7 @@ def complete_order_manual(request: HttpRequest) -> HttpResponse:
 
 # ── Restock and invoices ─────────────────────────────────────────────────────
 
+
 @login_required
 @require_http_methods(["POST"])
 def reconcile_restock(request: HttpRequest) -> HttpResponse:
@@ -271,6 +286,7 @@ def add_products_from_invoice(request: HttpRequest) -> HttpResponse:
 
 
 # ── WebJoint webhooks (each served at hooks/<WEBHOOK_SECRET>/<name>) ──────────
+
 
 def _json_body(request: HttpRequest) -> dict:
     try:

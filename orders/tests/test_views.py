@@ -1,4 +1,5 @@
 """Input handling in the views: bad webhook bodies, refused dashboard actions, invoice uploads."""
+
 import json
 from datetime import datetime
 from decimal import Decimal
@@ -26,8 +27,9 @@ class TestNewOrderRejectsBadBodies(TestCase):
     URL = f"/hooks/{KEY}/new_order"
 
     def _assert_rejected(self, body):
-        with self.assertLogs("orders.views", "WARNING"), \
-             patch("orders.tasks.prepare_order_task") as prepare, patch("orders.tasks.send_message_task") as send:
+        with self.assertLogs("orders.views", "WARNING"), patch("orders.tasks.prepare_order_task") as prepare, patch(
+            "orders.tasks.send_message_task"
+        ) as send:
             response = _post_raw(self.URL, body if isinstance(body, str) else json.dumps(body))
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["status"], "error")
@@ -70,7 +72,9 @@ class TestNewOrderRejectsBadBodies(TestCase):
 class TestCompleteAndCancelRejectBadBodies(SimpleTestCase):
     def test_missing_id_is_a_400_and_nothing_is_called(self):
         for name in ("complete_order", "cancel_order"):
-            with self.subTest(name), patch(f"orders.views.{name}") as action, self.assertLogs("orders.views", "WARNING"):
+            with self.subTest(name), patch(f"orders.views.{name}") as action, self.assertLogs(
+                "orders.views", "WARNING"
+            ):
                 response = _post_raw(f"/hooks/{KEY}/{name}", json.dumps({"shipping": {"city": "Davis"}}))
             self.assertEqual(response.status_code, 400)
             action.assert_not_called()
@@ -95,8 +99,12 @@ class DashboardCase(TestCase):
 
     def _order(self, order_id="9001", **fields):
         defaults = dict(
-            customer_name="Jane Doe", customer_phone="15305551234", city="Davis",
-            order_date=datetime.now(), payment_type="Cash", total=Decimal("50.00"),
+            customer_name="Jane Doe",
+            customer_phone="15305551234",
+            city="Davis",
+            order_date=datetime.now(),
+            payment_type="Cash",
+            total=Decimal("50.00"),
         )
         return Order.objects.create(order_id=order_id, **{**defaults, **fields})
 
@@ -145,8 +153,11 @@ class TestRefusedActionsAreShown(DashboardCase):
 class TestBadIdsAreNotServerErrors(DashboardCase):
     def test_non_numeric_ids_are_404(self):
         for path, field in (
-            ("/toggle_driver", "driver_id"), ("/delete_driver", "driver_id"), ("/dismiss_notice", "notice_id"),
-            ("/set_driver_location", "driver_id"), ("/assign_driver", "driver_id"),
+            ("/toggle_driver", "driver_id"),
+            ("/delete_driver", "driver_id"),
+            ("/dismiss_notice", "notice_id"),
+            ("/set_driver_location", "driver_id"),
+            ("/assign_driver", "driver_id"),
         ):
             with self.subTest(path):
                 data = {field: "abc", "city": "Davis", "order_id": "9001"}
@@ -165,14 +176,16 @@ class TestBadIdsAreNotServerErrors(DashboardCase):
 class TestInvoiceUpload(DashboardCase):
     def _upload(self, name="invoice.pdf", content=b"%PDF fake", content_type="application/pdf"):
         return self.client.post(
-            "/add_products_from_invoice", {"invoice": SimpleUploadedFile(name, content, content_type=content_type)},
+            "/add_products_from_invoice",
+            {"invoice": SimpleUploadedFile(name, content, content_type=content_type)},
             follow=True,
         )
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_a_valid_invoice_is_read_and_products_are_queued(self):
-        with patch("orders.views.extract_products_from_invoice", return_value=[{"product_name": "X"}]) as read, \
-             patch("orders.tasks.create_product_task") as create:
+        with patch("orders.views.extract_products_from_invoice", return_value=[{"product_name": "X"}]) as read, patch(
+            "orders.tasks.create_product_task"
+        ) as create:
             response = self._upload()
         self.assertEqual(response.status_code, 200)
         read.assert_called_once_with(b"%PDF fake", "application/pdf")
@@ -180,8 +193,9 @@ class TestInvoiceUpload(DashboardCase):
 
     @override_settings(RESTOCK_TEST_MODE=True)
     def test_test_mode_reads_the_invoice_but_does_not_write_to_webjoint(self):
-        with patch("orders.views.extract_products_from_invoice", return_value=[{"product_name": "X"}]), \
-             patch("orders.tasks.create_product_task") as create, self.assertLogs("orders.views", "WARNING"):
+        with patch("orders.views.extract_products_from_invoice", return_value=[{"product_name": "X"}]), patch(
+            "orders.tasks.create_product_task"
+        ) as create, self.assertLogs("orders.views", "WARNING"):
             response = self._upload()
         create.delay.assert_not_called()
         self.assertContains(response, "Test mode is on")
@@ -198,8 +212,9 @@ class TestInvoiceUpload(DashboardCase):
         self.assertContains(response, "must be a PDF or an image")
 
     def test_oversized_file_is_refused_before_the_api_is_called(self):
-        with patch("orders.services.invoice.MAX_UPLOAD_BYTES", 10), \
-             patch("orders.views.extract_products_from_invoice") as read, self.assertLogs("orders.views", "WARNING"):
+        with patch("orders.services.invoice.MAX_UPLOAD_BYTES", 10), patch(
+            "orders.views.extract_products_from_invoice"
+        ) as read, self.assertLogs("orders.views", "WARNING"):
             response = self._upload(content=b"x" * 11)
         read.assert_not_called()
         self.assertContains(response, "too large")
@@ -211,8 +226,9 @@ class TestInvoiceUpload(DashboardCase):
             def __init__(self):
                 Exception.__init__(self, "boom")
 
-        with patch.object(invoice, "Anthropic") as client_class, \
-             self.assertLogs("orders.services.invoice", "ERROR"), self.assertLogs("orders.views", "WARNING"):
+        with patch.object(invoice, "Anthropic") as client_class, self.assertLogs(
+            "orders.services.invoice", "ERROR"
+        ), self.assertLogs("orders.views", "WARNING"):
             client_class.return_value.messages.parse.side_effect = FakeApiError()
             response = self._upload()
         self.assertContains(response, "Could not read the invoice")
@@ -223,7 +239,10 @@ class TestPendingCardsQueries(DashboardCase):
         driver = Driver.objects.create(name="D1", is_active=True)
         for i in range(count):
             self._order(
-                f"q{i}", driver=driver, eta_start=datetime(2026, 7, 20, 14, i), eta_end=datetime(2026, 7, 20, 15, i),
+                f"q{i}",
+                driver=driver,
+                eta_start=datetime(2026, 7, 20, 14, i),
+                eta_end=datetime(2026, 7, 20, 15, i),
                 customer_name="Frank Sinatra Adult" if i % 2 else "Pat Q",
             )
 
@@ -232,8 +251,13 @@ class TestPendingCardsQueries(DashboardCase):
         with self.assertNumQueries(2):
             self.assertEqual(len(dashboard.pending_cards()), 2)
         for i in range(2, 8):
-            self._order(f"x{i}", eta_start=datetime(2026, 7, 20, 16, i), eta_end=datetime(2026, 7, 20, 17, i),
-                        driver=Driver.objects.first(), customer_name="Frank Sinatra Medical")
+            self._order(
+                f"x{i}",
+                eta_start=datetime(2026, 7, 20, 16, i),
+                eta_end=datetime(2026, 7, 20, 17, i),
+                driver=Driver.objects.first(),
+                customer_name="Frank Sinatra Medical",
+            )
         with self.assertNumQueries(2):
             self.assertEqual(len(dashboard.pending_cards()), 8)
 
@@ -258,7 +282,9 @@ class TestScheduledWindowAtIntake(TestCase):
         from datetime import timedelta
 
         from orders.services.time import parse_webhook_time
+
         Driver.objects.create(name="D1", is_active=True, current_city="Davis")
+
         def stamp(delta):
             return (datetime.utcnow() + delta).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
@@ -270,11 +296,13 @@ class TestScheduledWindowAtIntake(TestCase):
 
     def test_a_later_window_replaces_the_estimate(self):
         from datetime import timedelta
+
         order, wanted_start = self._place(timedelta(hours=5), timedelta(hours=6))
         self.assertEqual(order.eta_start, wanted_start)
 
     def test_a_window_that_ends_before_the_estimate_is_ignored(self):
         from datetime import timedelta
+
         order, wanted_start = self._place(timedelta(minutes=1), timedelta(minutes=10))
         self.assertNotEqual(order.eta_start, wanted_start)
         self.assertIsNotNone(order.eta_start)
@@ -289,13 +317,15 @@ class TestDashboardAssets(DashboardCase):
 
     def test_the_static_files_exist(self):
         from django.contrib.staticfiles import finders
+
         for name in ("orders/dashboard.css", "orders/dashboard.js"):
             self.assertIsNotNone(finders.find(name), name)
 
     def test_the_script_is_told_where_to_poll(self):
         page = self.client.get("/").content.decode()
         for attribute, path in (
-            ("data-pending-url", "/pending_orders_partial"), ("data-restock-url", "/restock_partial"),
+            ("data-pending-url", "/pending_orders_partial"),
+            ("data-restock-url", "/restock_partial"),
             ("data-login-url", "/accounts/login/"),
         ):
             self.assertIn(f'{attribute}="{path}"', page)

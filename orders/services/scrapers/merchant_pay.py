@@ -48,4 +48,3 @@ def send_merchant_pay_link() -> None:
                 logger.error("send_merchant_pay_link: 2FA verification step failed: %s", e)
 
         time.sleep(5)
-

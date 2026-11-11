@@ -3,6 +3,7 @@
 The webhook view only parses the request and calls handle_new_order. Every SMS and WebJoint
 write here is gated by RESTOCK_TEST_MODE.
 """
+
 from __future__ import annotations
 
 import logging

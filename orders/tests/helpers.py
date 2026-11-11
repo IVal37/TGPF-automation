@@ -1,4 +1,5 @@
 """Shared test fixtures: a sample WebJoint webhook and base classes."""
+
 from datetime import datetime
 from unittest.mock import patch
 
@@ -67,6 +68,7 @@ POS_ORDER["source"] = "POS"
 
 class DbTruthCase(TestCase):
     """TestGetEta's clock: 'today' is a fixed Monday 2pm, so open-order queries are deterministic."""
+
     BASE = datetime(2026, 7, 20, 14, 0, 0)
 
     def setUp(self):
@@ -80,5 +82,4 @@ class DbTruthCase(TestCase):
         return driver
 
     def _add(self, order_id, city, when=None, **kw):
-        add_order(order_city=city, order_id=order_id, customer_name="Test",
-                  order_time=when or self.BASE, **kw)
+        add_order(order_city=city, order_id=order_id, customer_name="Test", order_time=when or self.BASE, **kw)

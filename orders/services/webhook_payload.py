@@ -3,6 +3,7 @@
 parse_new_order checks the fields the app depends on once, up front, and raises
 InvalidPayload (shown as HTTP 400) instead of failing later with a KeyError.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -35,12 +36,12 @@ class NewOrderPayload:
     delivery_fee: Decimal
     items: List[dict]
     # only delivery orders need these; a storefront sale may omit them
-    webjoint_id: str            # WebJoint's own key for the order; "" if the webhook has none
-    weedmaps_order_id: str      # the number Weedmaps shows as "#49018286"; "" for direct orders
+    webjoint_id: str  # WebJoint's own key for the order; "" if the webhook has none
+    weedmaps_order_id: str  # the number Weedmaps shows as "#49018286"; "" for direct orders
     city: str
-    phone: str                  # digits as WebJoint sends them, without the leading "+"
-    payment_type: str           # the label WebJoint attached ("Cash" for every Weedmaps order)
-    is_pending: bool            # WebJoint status "Pending": the order still has to be dispatched
+    phone: str  # digits as WebJoint sends them, without the leading "+"
+    payment_type: str  # the label WebJoint attached ("Cash" for every Weedmaps order)
+    is_pending: bool  # WebJoint status "Pending": the order still has to be dispatched
     scheduled_start: Optional[datetime]
     scheduled_end: Optional[datetime]
 

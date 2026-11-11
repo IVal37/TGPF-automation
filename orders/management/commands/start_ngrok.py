@@ -53,7 +53,7 @@ def get_endpoint_link() -> str:
 
 
 class Command(BaseCommand):
-    help = 'Start ngrok tunnel'
+    help = "Start ngrok tunnel"
 
     def handle(self, *args, **options) -> None:
         start_ngrok()

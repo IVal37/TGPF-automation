@@ -39,28 +39,35 @@ logger = logging.getLogger(__name__)
 #    (Order.last_error...), where the dispatch card shows it in red with Retry
 #    and Dismiss, and logs it. Tasks with no order raise a dashboard notice.
 
+
 def failure_text(action: str, exc: BaseException, order=None, ref: str = "") -> str:
     step = failed_step(exc)
     # a BeforeCommitError's own message is already "ExcType: message" of its cause
     detail = str(exc) if isinstance(exc, BeforeCommitError) else describe(exc)
-    who = f" for {customer_label(order.customer_name)} (order {order.order_id})" if order else (f" (order {ref})" if ref else "")
+    who = (
+        f" for {customer_label(order.customer_name)} (order {order.order_id})"
+        if order
+        else (f" (order {ref})" if ref else "")
+    )
     text = f"{action} failed{who} at step '{step}': {detail}"
     if not isinstance(exc, BeforeCommitError):
         text += " — it may have gone through; check before retrying."
     return text
+
 
 class OrderTask(Task):
     autoretry_for = (BeforeCommitError,)
     retry_backoff = 30
     max_retries = 2
 
-    action = "Browser task"   # shown in the failure text
+    action = "Browser task"  # shown in the failure text
     # which Order field the task's first argument identifies, or None if it is
     # not about one order
     order_key = "order_id"
 
     def on_failure(self, exc, task_id, args, kwargs, einfo) -> None:
         record_failure(self, exc, args, kwargs)
+
 
 # called once a task has failed for good
 def record_failure(task, exc, args, kwargs) -> None:
@@ -83,6 +90,7 @@ def record_failure(task, exc, args, kwargs) -> None:
         last_error_after_commit=not isinstance(exc, BeforeCommitError),
     )
 
+
 @shared_task(base=OrderTask, action="Dispatch text")
 def send_message_task(order_id: str, phone: str, message: str) -> None:
     send_message(phone, message, order_ref=order_id)
@@ -90,17 +98,21 @@ def send_message_task(order_id: str, phone: str, message: str) -> None:
     # sending, so a dispatcher's Dismiss or a later change isn't undone)
     Order.objects.filter(order_id=order_id, status=OrderStatus.SENDING).update(status=OrderStatus.SENT)
 
+
 @shared_task(base=OrderTask, action="WebJoint note", order_key="webjoint_id")
 def fill_order_notes_task(order_id: str, order_notes: str) -> None:
     fill_order_notes(order_id, order_notes)
+
 
 @shared_task(base=OrderTask, action="Chiles pull", order_key="webjoint_id")
 def pull_from_chiles_task(order_id: str) -> None:
     pull_from_chiles(order_id)
 
+
 @shared_task(base=OrderTask, action="Driver dispatch", order_key="webjoint_id")
 def dispatch_to_driver_task(order_id: str) -> None:
     dispatch_to_driver(order_id)
+
 
 # pull the order's items from Chiles, then (for orders still Pending) dispatch
 # it to a driver, as one browser job so the two steps never interleave with
@@ -137,6 +149,7 @@ def prepare_order_task(order_id: str, dispatch: bool) -> None:
     if after_commit:
         raise after_commit[0]
 
+
 # looks up the Weedmaps payment type for a Weedmaps-sourced order and saves it.
 # order_id is our Order.order_id. The save only fills an empty payment_type, so
 # it never overwrites a value a dispatcher already set with "Send as cash".
@@ -167,9 +180,11 @@ def resolve_payment_type_task(order_id: str, write_notes: bool = False) -> None:
         else:
             logger.warning("resolve_payment_type (order %s): no WebJoint id; note skipped", order_id)
 
+
 @shared_task(base=OrderTask, action="Product creation", order_key=None)
 def create_product_task(product_dicts: List[Dict[str, str]]) -> None:
     create_product(product_dicts)
+
 
 # Until the real link is automated (the browser scraper only logs in), this just
 # tells the dispatcher what to send by hand: it appears as a dashboard notice
@@ -185,11 +200,17 @@ def send_merchant_pay_link_task(order_id: str) -> None:
     logger.info("%s (order %s)", message, order_id)
     add_notice(f"{message} (order {order_id})")
 
+
 # the tasks the dashboard's Retry button may re-queue, by task name
 RETRYABLE_TASKS = {
-    task.name: task for task in (
-        send_message_task, fill_order_notes_task, pull_from_chiles_task,
-        dispatch_to_driver_task, prepare_order_task, resolve_payment_type_task,
+    task.name: task
+    for task in (
+        send_message_task,
+        fill_order_notes_task,
+        pull_from_chiles_task,
+        dispatch_to_driver_task,
+        prepare_order_task,
+        resolve_payment_type_task,
     )
 }
 
@@ -202,11 +223,10 @@ RETRYABLE_TASKS = {
 def _build_restock_message(status: str) -> str:
     today = timezone.now().date()
     rows = (
-        OrderItem.objects
-        .filter(order__status=status, order__order_date__date=today)
-        .values('product_name')
-        .annotate(total_qty=Sum('quantity'))
-        .order_by('product_name')
+        OrderItem.objects.filter(order__status=status, order__order_date__date=today)
+        .values("product_name")
+        .annotate(total_qty=Sum("quantity"))
+        .order_by("product_name")
     )
     if not rows:
         return "No items to restock today."

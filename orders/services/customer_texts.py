@@ -1,4 +1,5 @@
 """The texts we send customers."""
+
 from __future__ import annotations
 
 from random import choice
@@ -13,7 +14,13 @@ from orders.services.time import format_time
 
 
 def render_dispatch_text(
-    name: str, last_name: str, discount, total, payment_type: str, early_eta: str, late_eta: str,
+    name: str,
+    last_name: str,
+    discount,
+    total,
+    payment_type: str,
+    early_eta: str,
+    late_eta: str,
 ) -> str:
     """The dispatch SMS from its parts. early_eta/late_eta are already-formatted times ("2:30")."""
     rounded_total = round_money(adjusted_total(total, payment_type))
@@ -25,10 +32,10 @@ def render_dispatch_text(
     merchant_pay_link_text = "I will send over your merchant pay link in a moment. " if is_merchant_pay else ""
 
     return (
-        f'Hi {name}, thank you for your order from TGPF. You saved ${discount} with discounts ' +
-        f'and your total {card_fee_text}{merchant_pay_fee_text}is ${rounded_total}. {merchant_pay_link_text}Your driver ' +
-        f'{in_area_text} and you will get an auto update when he is directly en route to you and when he arrives. ' +
-        f'{choice(VALEDICTIONS)}'
+        f"Hi {name}, thank you for your order from TGPF. You saved ${discount} with discounts "
+        + f"and your total {card_fee_text}{merchant_pay_fee_text}is ${rounded_total}. {merchant_pay_link_text}Your driver "
+        + f"{in_area_text} and you will get an auto update when he is directly en route to you and when he arrives. "
+        + f"{choice(VALEDICTIONS)}"
     )
 
 
@@ -37,8 +44,13 @@ def dispatch_text(order: Order) -> str:
     now (what the dispatcher approved or edited). Pass an order freshly read from the DB."""
     name, last_name = split_name(order.customer_name)
     return render_dispatch_text(
-        name, last_name, order.discount, effective_total(order), order.payment_type,
-        format_time(order.eta_start), format_time(order.eta_end),
+        name,
+        last_name,
+        order.discount,
+        effective_total(order),
+        order.payment_type,
+        format_time(order.eta_start),
+        format_time(order.eta_end),
     )
 
 
@@ -48,10 +60,10 @@ def reschedule_text(order: Order) -> str:
     close_time = closing_dt(order.eta_start)
     close_str = f"{close_time.hour % 12 or 12}pm"
     return (
-        f'Hi {name}, thank you for your order from TGPF. '
-        f'Unfortunately our driver will not be able to make it out to you by '
-        f'{close_str} tonight. I can cancel your order or reschedule it for first '
-        f'thing in the morning, let me know what works. Thanks!'
+        f"Hi {name}, thank you for your order from TGPF. "
+        f"Unfortunately our driver will not be able to make it out to you by "
+        f"{close_str} tonight. I can cancel your order or reschedule it for first "
+        f"thing in the morning, let me know what works. Thanks!"
     )
 
 
@@ -68,8 +80,8 @@ def under_min_text(first_name: str, city: str, subtotal, discount) -> str:
         options_text = "Could we add something to your order to get you above the minimum?"
 
     return (
-        f'Hi {first_name}, thank you for your order from TGPF. I am reaching out to let you know we ' +
-        f'have an order minimum of ${city_min} to deliver out to {city}. These minimums are ' +
-        f'calculated before taxes and after discounts. You are currently at ${order_total}. ' +
-        f'{options_text} Thank you for your understanding!'
+        f"Hi {first_name}, thank you for your order from TGPF. I am reaching out to let you know we "
+        + f"have an order minimum of ${city_min} to deliver out to {city}. These minimums are "
+        + f"calculated before taxes and after discounts. You are currently at ${order_total}. "
+        + f"{options_text} Thank you for your understanding!"
     )

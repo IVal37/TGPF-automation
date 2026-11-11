@@ -5,6 +5,7 @@ and the Celery tasks retry exactly those. Anything else may have gone through, s
 it is not retried automatically. Final failures land on the order (last_error) and
 in the log; nothing here uses Telegram.
 """
+
 import os
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -28,9 +29,16 @@ BASE = datetime(2026, 7, 20, 14, 0, 0)
 
 def _order(**extra):
     fields = dict(
-        order_id="9001", webjoint_id=WJ, customer_name="Hailey White", customer_phone="15305551234",
-        city="Davis", order_date=BASE, eta_start=BASE + timedelta(minutes=30),
-        eta_end=BASE + timedelta(minutes=90), payment_type="Cash", total=Decimal("50.00"),
+        order_id="9001",
+        webjoint_id=WJ,
+        customer_name="Hailey White",
+        customer_phone="15305551234",
+        city="Davis",
+        order_date=BASE,
+        eta_start=BASE + timedelta(minutes=30),
+        eta_end=BASE + timedelta(minutes=90),
+        payment_type="Cash",
+        total=Decimal("50.00"),
     )
     fields.update(extra)
     return Order.objects.create(**fields)
@@ -84,7 +92,9 @@ class TestScraperErrorClassification(SimpleTestCase):
 class TestFailureText(TestCase):
     def test_names_the_action_customer_first_name_and_last_initial_order_and_step(self):
         text = failure_text("Dispatch text", _boom(), _order())
-        self.assertEqual(text, "Dispatch text failed for Hailey W. (order 9001) at step 'compose message': RuntimeError: boom")
+        self.assertEqual(
+            text, "Dispatch text failed for Hailey W. (order 9001) at step 'compose message': RuntimeError: boom"
+        )
 
     def test_never_includes_the_full_surname_or_phone_number(self):
         text = failure_text("Dispatch text", _boom(), _order())
@@ -114,13 +124,16 @@ class TestTasksRetryOnlyBeforeTheCommit(TestCase):
 
     def _run(self, effect):
         from orders.tasks import fill_order_notes_task
+
         calls = []
 
         def scraper(*args):
             calls.append(args)
             return effect(len(calls))
 
-        with patch("orders.tasks.fill_order_notes", side_effect=scraper), self.assertLogs("orders.tasks", "ERROR") as logs:
+        with patch("orders.tasks.fill_order_notes", side_effect=scraper), self.assertLogs(
+            "orders.tasks", "ERROR"
+        ) as logs:
             result = fill_order_notes_task.apply(args=[WJ, "a note"])
             logger_lines = list(logs.output)
         return result, calls, logger_lines
@@ -128,10 +141,12 @@ class TestTasksRetryOnlyBeforeTheCommit(TestCase):
     def _raise(self, exc):
         def effect(call_number):
             raise exc
+
         return effect
 
     def test_retry_policy(self):
         from orders.tasks import fill_order_notes_task
+
         self.assertEqual(fill_order_notes_task.autoretry_for, (BeforeCommitError,))
         self.assertEqual((fill_order_notes_task.retry_backoff, fill_order_notes_task.max_retries), (30, 2))
         self.assertFalse(fill_order_notes_task.acks_late)
@@ -161,9 +176,11 @@ class TestTasksRetryOnlyBeforeTheCommit(TestCase):
         def effect(call_number):
             if call_number == 1:
                 raise _boom()
+
         with patch("orders.tasks.fill_order_notes", side_effect=lambda *a: effect(next(counter))) as scraper:
             counter = iter(range(1, 10))
             from orders.tasks import fill_order_notes_task
+
             result = fill_order_notes_task.apply(args=[WJ, "a note"])
         self.assertEqual(scraper.call_count, 2)
         self.assertEqual(Order.objects.get(order_id="9001").last_error, "")
@@ -171,8 +188,10 @@ class TestTasksRetryOnlyBeforeTheCommit(TestCase):
 
     def test_a_task_with_no_order_raises_a_dashboard_notice_instead(self):
         from orders.tasks import create_product_task
-        with patch("orders.tasks.create_product", side_effect=_boom("open Products")), \
-             self.assertLogs("orders.tasks", "ERROR"):
+
+        with patch("orders.tasks.create_product", side_effect=_boom("open Products")), self.assertLogs(
+            "orders.tasks", "ERROR"
+        ):
             create_product_task.apply(args=[[{"product_name": "X"}]])
         notice = Notice.objects.get()
         self.assertEqual(notice.level, "error")
@@ -181,6 +200,7 @@ class TestTasksRetryOnlyBeforeTheCommit(TestCase):
 
     def test_an_unknown_order_is_still_reported(self):
         from orders.tasks import fill_order_notes_task
+
         with patch("orders.tasks.fill_order_notes", side_effect=_boom()), self.assertLogs("orders.tasks", "ERROR"):
             fill_order_notes_task.apply(args=["no-such-webjoint-id", "note"])
         self.assertIn("no-such-webjoint-id", Notice.objects.get().message)
@@ -189,20 +209,23 @@ class TestTasksRetryOnlyBeforeTheCommit(TestCase):
 class TestPrepareOrderTaskNeverRepeatsAStep(TestCase):
     def _run(self, pull=None, dispatch=None, dispatch_flag=True):
         from orders.tasks import prepare_order_task
-        with patch("orders.tasks.pull_from_chiles", side_effect=pull) as pull_mock, \
-             patch("orders.tasks.dispatch_to_driver", side_effect=dispatch) as dispatch_mock, \
-             patch("orders.tasks.pull_from_chiles_task") as pull_task, \
-             patch("orders.tasks.dispatch_to_driver_task") as dispatch_task, \
-             self.assertLogs("orders.tasks", "ERROR") if (pull or dispatch) else patch("orders.tasks.logger"):
+
+        with patch("orders.tasks.pull_from_chiles", side_effect=pull) as pull_mock, patch(
+            "orders.tasks.dispatch_to_driver", side_effect=dispatch
+        ) as dispatch_mock, patch("orders.tasks.pull_from_chiles_task") as pull_task, patch(
+            "orders.tasks.dispatch_to_driver_task"
+        ) as dispatch_task, self.assertLogs("orders.tasks", "ERROR") if (pull or dispatch) else patch(
+            "orders.tasks.logger"
+        ):
             result = prepare_order_task.apply(args=[WJ, dispatch_flag])
         return result, pull_mock, dispatch_mock, pull_task, dispatch_task
 
     def test_a_pull_that_failed_before_its_commit_is_handed_to_its_own_retrying_task(self):
         result, pull, dispatch, pull_task, dispatch_task = self._run(pull=_boom("open order"))
-        dispatch.assert_called_once_with(WJ)          # the dispatch still ran
-        pull_task.delay.assert_called_once_with(WJ)   # the pull retries on its own
+        dispatch.assert_called_once_with(WJ)  # the dispatch still ran
+        pull_task.delay.assert_called_once_with(WJ)  # the pull retries on its own
         dispatch_task.delay.assert_not_called()
-        self.assertEqual(pull.call_count, 1)          # this task did not retry the dispatch
+        self.assertEqual(pull.call_count, 1)  # this task did not retry the dispatch
         self.assertTrue(result.successful())
 
     def test_a_dispatch_that_failed_before_its_commit_is_handed_off_without_repeating_the_pull(self):
@@ -228,6 +251,7 @@ class TestPrepareOrderTaskNeverRepeatsAStep(TestCase):
 class TestSendMessageTask(TestCase):
     def test_success_moves_a_sending_order_to_sent(self):
         from orders.tasks import send_message_task
+
         _order(status=Order.Status.SENDING)
         with patch("orders.tasks.send_message") as scraper:
             send_message_task.apply(args=["9001", "15305551234", "hello"])
@@ -236,6 +260,7 @@ class TestSendMessageTask(TestCase):
 
     def test_a_dismissed_or_changed_order_is_not_pushed_back_to_sent(self):
         from orders.tasks import send_message_task
+
         _order(status=Order.Status.COMPLETED)
         with patch("orders.tasks.send_message"):
             send_message_task.apply(args=["9001", "15305551234", "hello"])
@@ -243,6 +268,7 @@ class TestSendMessageTask(TestCase):
 
     def test_failure_leaves_the_order_sending_with_the_error_and_no_phone_in_it(self):
         from orders.tasks import send_message_task
+
         _order(status=Order.Status.SENDING)
         with patch("orders.tasks.send_message", side_effect=_boom()), self.assertLogs("orders.tasks", "ERROR"):
             send_message_task.apply(args=["9001", "15305551234", "hello"])
@@ -253,6 +279,7 @@ class TestSendMessageTask(TestCase):
 
     def test_a_text_that_failed_after_the_send_click_is_not_retried(self):
         from orders.tasks import send_message_task
+
         _order(status=Order.Status.SENDING)
         exc = RuntimeError("send click failed")
         exc.step = "send message"
@@ -267,6 +294,7 @@ class TestSendingStatus(TestCase):
 
     def _send(self, view_name="send_dispatch_msg_view", **extra):
         from orders import views
+
         request = RequestFactory().post("/x", {"order_id": "9001", "eta_start": "14:45", "eta_end": "15:45", **extra})
         with patch("orders.tasks.send_message_task") as send_task, patch("orders.tasks.fill_order_notes_task"):
             getattr(views, view_name)(as_dispatcher(request))
@@ -277,6 +305,7 @@ class TestSendingStatus(TestCase):
         _order(driver=self.driver)
         statuses = []
         from orders import views
+
         request = RequestFactory().post("/x", {"order_id": "9001", "eta_start": "14:45", "eta_end": "15:45"})
         with patch("orders.tasks.send_message_task") as send_task, patch("orders.tasks.fill_order_notes_task"):
             send_task.delay.side_effect = lambda *a: statuses.append(Order.objects.get(order_id="9001").status)
@@ -311,14 +340,20 @@ class TestSendingStatus(TestCase):
 class TestErrorCard(TestCase):
     def _html(self):
         from orders.views import pending_orders_partial
+
         return pending_orders_partial(as_dispatcher(RequestFactory().get("/p"))).content.decode()
 
     def setUp(self):
         self.driver = Driver.objects.create(name="D1", is_active=True)
 
     def test_error_shows_in_red_with_retry_and_dismiss(self):
-        _order(driver=self.driver, status=Order.Status.SENDING, last_error="Dispatch text failed for Hailey W.",
-               last_error_task="orders.tasks.send_message_task", last_error_args={"args": ["9001", "1", "x"], "kwargs": {}})
+        _order(
+            driver=self.driver,
+            status=Order.Status.SENDING,
+            last_error="Dispatch text failed for Hailey W.",
+            last_error_task="orders.tasks.send_message_task",
+            last_error_args={"args": ["9001", "1", "x"], "kwargs": {}},
+        )
         html = self._html()
         self.assertIn("dispatch-error", html)
         self.assertIn("Dispatch text failed for Hailey W.", html)
@@ -329,8 +364,13 @@ class TestErrorCard(TestCase):
         self.assertNotIn("confirm(", html)  # failed before the commit: a plain retry
 
     def test_retry_after_the_commit_asks_for_a_confirm(self):
-        _order(driver=self.driver, status=Order.Status.SENDING, last_error="failed", last_error_after_commit=True,
-               last_error_task="orders.tasks.send_message_task")
+        _order(
+            driver=self.driver,
+            status=Order.Status.SENDING,
+            last_error="failed",
+            last_error_after_commit=True,
+            last_error_task="orders.tasks.send_message_task",
+        )
         self.assertIn("confirm(", self._html())
 
     def test_an_already_sent_order_with_a_failed_note_still_shows(self):
@@ -358,12 +398,17 @@ class TestRetryAndDismissViews(TestCase):
 
     def _post(self, view_name, **data):
         from orders import views
+
         return getattr(views, view_name)(as_dispatcher(RequestFactory().post("/x", data)))
 
     def _failed(self, **extra):
         fields = dict(
-            driver=self.driver, status=Order.Status.SENDING, last_error="failed", last_error_after_commit=True,
-            last_error_at=BASE, last_error_task="orders.tasks.send_message_task",
+            driver=self.driver,
+            status=Order.Status.SENDING,
+            last_error="failed",
+            last_error_after_commit=True,
+            last_error_at=BASE,
+            last_error_task="orders.tasks.send_message_task",
             last_error_args={"args": ["9001", "15305551234", "hello"], "kwargs": {}},
         )
         fields.update(extra)
@@ -382,8 +427,10 @@ class TestRetryAndDismissViews(TestCase):
 
     @override_settings(RESTOCK_TEST_MODE=False)
     def test_retry_keeps_keyword_arguments(self):
-        self._failed(last_error_task="orders.tasks.resolve_payment_type_task",
-                     last_error_args={"args": ["9001"], "kwargs": {"write_notes": True}})
+        self._failed(
+            last_error_task="orders.tasks.resolve_payment_type_task",
+            last_error_args={"args": ["9001"], "kwargs": {"write_notes": True}},
+        )
         with patch.dict(RETRYABLE_TASKS, {"orders.tasks.resolve_payment_type_task": MagicMock()}) as tasks:
             self._post("retry_task_view", order_id="9001")
             tasks["orders.tasks.resolve_payment_type_task"].delay.assert_called_once_with("9001", write_notes=True)
@@ -410,10 +457,17 @@ class TestRetryAndDismissViews(TestCase):
     def test_every_order_task_is_retryable_by_name(self):
         self.assertEqual(
             sorted(RETRYABLE_TASKS),
-            sorted(f"orders.tasks.{n}" for n in (
-                "send_message_task", "fill_order_notes_task", "pull_from_chiles_task",
-                "dispatch_to_driver_task", "prepare_order_task", "resolve_payment_type_task",
-            )),
+            sorted(
+                f"orders.tasks.{n}"
+                for n in (
+                    "send_message_task",
+                    "fill_order_notes_task",
+                    "pull_from_chiles_task",
+                    "dispatch_to_driver_task",
+                    "prepare_order_task",
+                    "resolve_payment_type_task",
+                )
+            ),
         )
 
     def test_dismiss_clears_the_error_and_marks_a_stuck_sending_order_sent(self):
@@ -439,6 +493,7 @@ class TestRetryAndDismissViews(TestCase):
 
     def test_dismiss_notice(self):
         from orders.views import dismiss_notice_view
+
         notice = Notice.objects.create(message="hello")
         dismiss_notice_view(as_dispatcher(RequestFactory().post("/x", {"notice_id": notice.pk})))
         notice.refresh_from_db()
@@ -462,6 +517,7 @@ class TestNoticesOnTheDashboard(TestCase):
 class TestMerchantPayReminder(TestCase):
     def test_posts_a_notice_with_the_card_fee_total_and_opens_no_browser(self):
         from orders.tasks import send_merchant_pay_link_task
+
         _order(total=Decimal("100.00"))
         with patch("orders.services.scrapers.browser.create_driver") as chrome, self.assertLogs("orders.tasks", "INFO"):
             send_merchant_pay_link_task.apply(args=["9001"])
@@ -471,9 +527,16 @@ class TestMerchantPayReminder(TestCase):
 
     def test_uses_the_combined_total_of_a_linked_order(self):
         from orders.tasks import send_merchant_pay_link_task
+
         primary = _order(total=Decimal("100.00"), delivery_fee=Decimal("5.00"))
-        _order(order_id="9002", webjoint_id="x", customer_name="Fsa", linked_order=primary,
-               total=Decimal("50.00"), delivery_fee=Decimal("3.00"))
+        _order(
+            order_id="9002",
+            webjoint_id="x",
+            customer_name="Fsa",
+            linked_order=primary,
+            total=Decimal("50.00"),
+            delivery_fee=Decimal("3.00"),
+        )
         with self.assertLogs("orders.tasks", "INFO"):
             send_merchant_pay_link_task.apply(args=["9001"])
         # 100 + 50 - min(5, 3) = 147.00; + 2.25% + 0.35 = 150.66
@@ -481,6 +544,7 @@ class TestMerchantPayReminder(TestCase):
 
     def test_unknown_order_is_a_logged_noop(self):
         from orders.tasks import send_merchant_pay_link_task
+
         with self.assertLogs("orders.tasks", "WARNING"):
             send_merchant_pay_link_task.apply(args=["nope"])
         self.assertEqual(Notice.objects.count(), 0)
@@ -491,6 +555,7 @@ class TestFailureArtifacts(SimpleTestCase):
 
     def setUp(self):
         import tempfile
+
         folder = tempfile.TemporaryDirectory()
         self.addCleanup(folder.cleanup)
         self.dir = Path(folder.name)
@@ -504,10 +569,14 @@ class TestFailureArtifacts(SimpleTestCase):
         driver.page_source = "<html>page</html>"
         return driver
 
-    def _session(self, driver, label="send_message", ref="9001", fail_with=_BOOM):  # pass fail_with=None for a session that does not fail
+    def _session(
+        self, driver, label="send_message", ref="9001", fail_with=_BOOM
+    ):  # pass fail_with=None for a session that does not fail
         from orders.services.scrapers import browser
-        with patch.object(browser, "create_driver", return_value=(driver, MagicMock())), \
-             patch.object(browser, "_now", return_value=datetime(2026, 7, 20, 14, 0, 0)):
+
+        with patch.object(browser, "create_driver", return_value=(driver, MagicMock())), patch.object(
+            browser, "_now", return_value=datetime(2026, 7, 20, 14, 0, 0)
+        ):
             try:
                 with browser.browser_session(label, ref):
                     if fail_with:
@@ -562,6 +631,7 @@ class TestFailureArtifacts(SimpleTestCase):
 
     def test_chrome_failing_to_start_is_a_before_commit_error(self):
         from orders.services.scrapers import browser
+
         with patch.object(browser, "create_driver", side_effect=OSError("no chrome")):
             with self.assertRaises(BeforeCommitError) as caught:
                 with browser.browser_session("send_message", "9001"):
@@ -570,19 +640,22 @@ class TestFailureArtifacts(SimpleTestCase):
 
     def test_failures_dir_defaults_under_the_gitignored_logs_folder(self):
         from TGPFflows import settings as real_settings
+
         self.assertEqual(Path(real_settings.FAILURE_DIR), Path(real_settings.BASE_DIR) / "logs" / "failures")
 
 
 class TestFetch2faCode(SimpleTestCase):
     def test_imap_credentials_come_from_settings(self):
         from orders.services.scrapers import merchant_pay_helper
+
         mailbox = MagicMock()
         mailbox.__enter__.return_value = mailbox
         mailbox.search.return_value = ("OK", [b"1"])
         message = b"Subject: code\r\n\r\nYour code is 123456\r\n"
         mailbox.fetch.return_value = ("OK", [(b"1", message)])
-        with override_settings(MERCHANT_PAY_IMAP_USER="me@example.com", MERCHANT_PAY_IMAP_PASS="secret"), \
-             patch.object(merchant_pay_helper.imaplib, "IMAP4_SSL", return_value=mailbox):
+        with override_settings(MERCHANT_PAY_IMAP_USER="me@example.com", MERCHANT_PAY_IMAP_PASS="secret"), patch.object(
+            merchant_pay_helper.imaplib, "IMAP4_SSL", return_value=mailbox
+        ):
             code = merchant_pay_helper.fetch_2fa_code(timeout=1, poll=0)
         mailbox.login.assert_called_once_with("me@example.com", "secret")
         self.assertEqual(code, "123456")
@@ -591,6 +664,7 @@ class TestFetch2faCode(SimpleTestCase):
 class TestStartupWebhookNotice(TestCase):
     def _start(self, effect):
         from orders.apps import OrdersConfig
+
         config = OrdersConfig("orders", __import__("orders"))
         with patch("orders.management.commands.start_ngrok.start_ngrok", **effect):
             config._start_tunnel_and_register_webhooks()
@@ -616,7 +690,8 @@ class TestNoTelegramOutsideTheRestockDigests(SimpleTestCase):
     def test_only_the_restock_tasks_use_telegram(self):
         root = Path(settings.BASE_DIR) / "orders"
         users = sorted(
-            str(p.relative_to(root)) for p in root.rglob("*.py")
+            str(p.relative_to(root))
+            for p in root.rglob("*.py")
             if "telegram" in p.read_text().lower() and "tests" not in p.parts and "migrations" not in p.parts
         )
         # send_test_message is the manual "does the channel work" command; it refuses in test mode

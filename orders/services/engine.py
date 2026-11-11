@@ -17,6 +17,7 @@ from orders.services.travel import get_travel_time
 
 logger = logging.getLogger(__name__)
 
+
 # pick the active driver best suited to take on a stop in order_city:
 # least-loaded first (fewest current orders), then closest to order_city,
 # then lowest id for determinism when still tied
@@ -32,6 +33,7 @@ def _pick_driver(order_city: str) -> Optional[Driver]:
 
     return min(drivers, key=sort_key)
 
+
 # persist a webhook's "details" line items against an already-saved order
 def _save_items(order: Order, items: list) -> None:
     for item in items or []:
@@ -43,15 +45,18 @@ def _save_items(order: Order, items: list) -> None:
             price=price,
         )
 
+
 # mark an order finished in the DB (used for completes, cancels, and shells)
 def _close_order_in_db(order_id: str, status: str = Order.Status.COMPLETED) -> None:
     Order.objects.filter(order_id=order_id).update(status=status, driver=None)
+
 
 # a driver who is no longer on shift keeps their last city untouched
 def _move_driver(driver_id: int, city: str) -> None:
     driver = Driver.objects.filter(pk=driver_id, is_active=True).first()
     if driver is not None:
         driver.set_current_city(city)
+
 
 # add order and add to associated data structures
 def add_order(
@@ -101,6 +106,7 @@ def add_order(
         logger.warning("add_order %s: no driver on shift; saved unassigned", order_id)
     return order
 
+
 # hand an unassigned order to a driver. A queued order gets its ETA now (and the
 # customer's scheduled window, if they picked one); an order that was already
 # texted keeps the ETA the customer was told.
@@ -111,6 +117,7 @@ def assign_order(order_id: str, driver_id: int) -> None:
 
     if order.status in QUEUE_STATUSES:
         estimate_window(order_id)
+
 
 # record a walk-in storefront sale (e.g. 3rd St pickup): no driver, no ETA, no
 # dispatch SMS — just persisted so the nightly restock digest can query it.
@@ -142,13 +149,16 @@ def add_storefront_order(
     order.save()
     _save_items(order, items)
 
+
 # complete an order. If it was out with a driver today, that driver is now in the
 # order's city, and one of their placeholder shells there is done too.
 def complete_order(order_id: str, city: str = "") -> None:
     tracked = queries.open_orders().filter(order_id=order_id).first()
     existing = Order.objects.filter(order_id=order_id).first()
     already_closed = existing is not None and existing.status in (
-        OrderStatus.COMPLETED, OrderStatus.CANCELLED, OrderStatus.STOREFRONT,
+        OrderStatus.COMPLETED,
+        OrderStatus.CANCELLED,
+        OrderStatus.STOREFRONT,
     )
 
     _close_order_in_db(order_id)
@@ -170,6 +180,7 @@ def complete_order(order_id: str, city: str = "") -> None:
             _close_order_in_db(shell.order_id)
             _move_driver(shell.driver_id, city)
 
+
 # add a shell order (city only) so driver location updates when it's completed
 def add_shell_order(city: str) -> None:
     assigned_driver = _pick_driver(city)
@@ -188,6 +199,7 @@ def add_shell_order(city: str) -> None:
     order.save()
     assigned_driver.add_order(order)
 
+
 # cancel an order (no restock capture); its driver ends up in the order's city
 def cancel_order(order_id: str) -> None:
     tracked = queries.open_orders().filter(order_id=order_id).first()
@@ -197,11 +209,13 @@ def cancel_order(order_id: str) -> None:
     if tracked is not None:
         _move_driver(tracked.driver_id, tracked.city)
 
+
 # put a driver on shift
 def add_driver(driver_id: int) -> None:
     driver: Driver = Driver.objects.get(pk=driver_id)
     driver.is_active = True
     driver.save(update_fields=["is_active"])
+
 
 # take a driver off shift. Their open orders (already-texted ones too) become
 # unassigned so a dispatcher can hand them to someone else; their placeholder
@@ -215,8 +229,8 @@ def remove_driver(driver_id: int) -> None:
     Order.objects.filter(pk__in=order_pks).update(driver=None)
     Driver.objects.filter(pk=driver_id).update(is_active=False)
 
+
 # permanently delete a driver (their open orders are unassigned first, not lost)
 def delete_driver(driver_id: int) -> None:
     remove_driver(driver_id)
     Driver.objects.filter(pk=driver_id).delete()
-

@@ -58,10 +58,7 @@ class Order(models.Model):
     customer_phone = models.CharField(max_length=20, blank=True)
     city = models.CharField(max_length=255)
     order_date = models.DateTimeField()
-    driver = models.ForeignKey(
-        Driver, null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="orders"
-    )
+    driver = models.ForeignKey(Driver, null=True, blank=True, on_delete=models.SET_NULL, related_name="orders")
     eta_start = models.DateTimeField(null=True, blank=True)
     eta_end = models.DateTimeField(null=True, blank=True)
     # the delivery window a customer picked for a scheduled order, kept so it can
@@ -75,8 +72,10 @@ class Order(models.Model):
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     delivery_fee = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     status = models.CharField(
-        max_length=20, choices=Status.choices,
-        default=Status.AWAITING_APPROVAL, db_index=True,
+        max_length=20,
+        choices=Status.choices,
+        default=Status.AWAITING_APPROVAL,
+        db_index=True,
     )
     # the last browser task for this order that failed for good (after its
     # automatic retries), shown on the dispatch card with Retry / Dismiss.
@@ -98,8 +97,7 @@ class Order(models.Model):
     # set on the companion (FSA/FSM) order, pointing at the real customer's
     # order it's actually part of — see pricing.effective_total
     linked_order = models.ForeignKey(
-        'self', null=True, blank=True,
-        on_delete=models.SET_NULL, related_name='linked_companions'
+        "self", null=True, blank=True, on_delete=models.SET_NULL, related_name="linked_companions"
     )
 
     def set_etas(self, start: datetime, end: datetime) -> None:
@@ -148,6 +146,7 @@ class Notice(models.Model):
 
 
 # ── Business config (editable in Django admin) ────────────────────────────────
+
 
 # a city we deliver to and its order minimum (before taxes, after discounts)
 class City(models.Model):

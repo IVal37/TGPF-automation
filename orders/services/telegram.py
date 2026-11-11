@@ -30,4 +30,3 @@ def send_telegram_message(text: str) -> None:
         # exception string doesn't include — log the raw body too.
         detail = getattr(e.response, "text", "") if getattr(e, "response", None) is not None else ""
         logger.error("send_telegram_message: failed to send: %s | response: %s", e, detail)
-

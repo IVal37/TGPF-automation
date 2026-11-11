@@ -1,4 +1,5 @@
 """The Restock tab: completed delivery orders the dispatcher ticks off, and the running list of what to restock."""
+
 from __future__ import annotations
 
 from typing import Dict, Iterable
@@ -17,15 +18,14 @@ def restock_context() -> Dict:
     """The orders waiting to be reconciled, and what to restock (reconciled orders' items,
     summed, until "Complete Restock" clears them)."""
     rows = (
-        OrderItem.objects
-        .filter(order__restock_reconciled=True, order__restock_cleared=False)
-        .values('product_name')
-        .annotate(quantity=Sum('quantity'))
-        .order_by('product_name')
+        OrderItem.objects.filter(order__restock_reconciled=True, order__restock_cleared=False)
+        .values("product_name")
+        .annotate(quantity=Sum("quantity"))
+        .order_by("product_name")
     )
     return {
-        'completed_orders': list(unreconciled_orders().order_by('pk')),
-        'restock_items': {row['product_name']: {'quantity': row['quantity']} for row in rows},
+        "completed_orders": list(unreconciled_orders().order_by("pk")),
+        "restock_items": {row["product_name"]: {"quantity": row["quantity"]} for row in rows},
     }
 
 

@@ -42,7 +42,8 @@ def create_driver(prefs: dict = None):
     driver = webdriver.Chrome(options=opts)
     # React re-renders can invalidate an element mid-wait; retry instead of raising
     return driver, WebDriverWait(
-        driver, 15,
+        driver,
+        15,
         ignored_exceptions=(NoSuchElementException, StaleElementReferenceException),
     )
 

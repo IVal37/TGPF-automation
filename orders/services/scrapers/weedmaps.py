@@ -58,15 +58,18 @@ def get_wm_payment_type(weedmaps_order_id: str) -> str:
         # this order before touching anything else
         order_opened = False
         try:
-            click(wait, (By.XPATH, f'//a[starts-with(@href, "/orders/") and normalize-space(.)="#{weedmaps_order_id}"]'))
-            wait.until(EC.presence_of_element_located(
-                (By.XPATH, f'//span[normalize-space(.)="Order #{weedmaps_order_id}"]')
-            ))
+            click(
+                wait, (By.XPATH, f'//a[starts-with(@href, "/orders/") and normalize-space(.)="#{weedmaps_order_id}"]')
+            )
+            wait.until(
+                EC.presence_of_element_located((By.XPATH, f'//span[normalize-space(.)="Order #{weedmaps_order_id}"]'))
+            )
             order_opened = True
         except Exception as e:
             logger.warning(
                 "get_wm_payment_type (Weedmaps order %s): order not found or page is another order (%s)",
-                weedmaps_order_id, type(e).__name__,
+                weedmaps_order_id,
+                type(e).__name__,
             )
             failure = BeforeCommitError("open Weedmaps order", e)
 
@@ -75,9 +78,9 @@ def get_wm_payment_type(weedmaps_order_id: str) -> str:
             # click through both prep buttons if present before reading payment type
             short_wait = WebDriverWait(driver, 4)
             try:
-                confirm_btn = short_wait.until(EC.element_to_be_clickable(
-                    (By.XPATH, '//button[contains(., "Confirm & start preparing")]')
-                ))
+                confirm_btn = short_wait.until(
+                    EC.element_to_be_clickable((By.XPATH, '//button[contains(., "Confirm & start preparing")]'))
+                )
                 confirm_btn.click()
                 time.sleep(2)
             except WebDriverException:
@@ -85,7 +88,14 @@ def get_wm_payment_type(weedmaps_order_id: str) -> str:
 
             # get payment type
             try:
-                payment_type_field = wait.until(EC.presence_of_element_located((By.XPATH , '//*[@id="__next"]/div/div[2]/div/div[3]/div[3]/div[1]/div[1]/div/div/div[4]/div[1]/p[1]')))
+                payment_type_field = wait.until(
+                    EC.presence_of_element_located(
+                        (
+                            By.XPATH,
+                            '//*[@id="__next"]/div/div[2]/div/div[3]/div[3]/div[1]/div[1]/div/div/div[4]/div[1]/p[1]',
+                        )
+                    )
+                )
                 payment_type = payment_type_field.text
             except Exception as e:
                 failure = BeforeCommitError("read payment type", e)
@@ -98,9 +108,9 @@ def get_wm_payment_type(weedmaps_order_id: str) -> str:
 
     return regularize_type(payment_type)
 
+
 def regularize_type(wm_type: str) -> str:
     if wm_type == "Cashless":
         return PaymentType.DEBIT
     else:
         return PaymentType.CASH
-

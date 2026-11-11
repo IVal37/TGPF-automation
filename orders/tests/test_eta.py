@@ -65,6 +65,7 @@ class TestGetEta(TestCase):
 
     def test_shell_orders_dont_count_toward_window_widening(self):
         from orders.services.engine import add_shell_order
+
         self._add("o1", "Davis")
         for _ in range(6):
             add_shell_order("Davis")

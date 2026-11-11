@@ -70,16 +70,18 @@ def extract_products_from_invoice(file_bytes: bytes, media_type: str) -> list[di
         response = client.messages.parse(
             model=settings.INVOICE_MODEL,
             max_tokens=16000,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": block_type,
-                        "source": {"type": "base64", "media_type": media_type, "data": data},
-                    },
-                    {"type": "text", "text": _EXTRACTION_PROMPT},
-                ],
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": block_type,
+                            "source": {"type": "base64", "media_type": media_type, "data": data},
+                        },
+                        {"type": "text", "text": _EXTRACTION_PROMPT},
+                    ],
+                }
+            ],
             output_format=_InvoiceProducts,
         )
     except APIError as e:

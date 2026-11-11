@@ -7,8 +7,8 @@ from django.apps import AppConfig
 
 
 class OrdersConfig(AppConfig):
-    default_auto_field = 'django.db.models.BigAutoField'
-    name = 'orders'
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "orders"
 
     def ready(self) -> None:
         # Django dev server calls ready() twice: once in the reloader and once
@@ -17,9 +17,9 @@ class OrdersConfig(AppConfig):
         # With --noreload there's no reloader fork at all, so RUN_MAIN is never
         # set - in that case we must not skip, since this is the only ready()
         # call we get.
-        if 'runserver' not in sys.argv:
+        if "runserver" not in sys.argv:
             return
-        if '--noreload' not in sys.argv and os.environ.get('RUN_MAIN') != 'true':
+        if "--noreload" not in sys.argv and os.environ.get("RUN_MAIN") != "true":
             return
         self._start_tunnel_and_register_webhooks()
         self._reset_stale_driver_locations()
@@ -35,9 +35,11 @@ class OrdersConfig(AppConfig):
         import logging
 
         from orders.services.notices import add_notice
+
         logger = logging.getLogger(__name__)
         try:
             from orders.management.commands.start_ngrok import start_ngrok
+
             url = start_ngrok()
         except Exception as e:  # deliberate: any failure here must not stop the server
             logger.exception("Webhook registration failed: %s", e)
@@ -51,7 +53,9 @@ class OrdersConfig(AppConfig):
     def _reset_stale_driver_locations(self) -> None:
         try:
             from orders.services.startup import reset_stale_driver_locations
+
             reset_stale_driver_locations()
         except Exception:  # deliberate: a database hiccup at startup must not stop the server
             import logging
+
             logging.getLogger(__name__).exception("Failed to reset driver locations on startup")

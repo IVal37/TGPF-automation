@@ -22,8 +22,10 @@ class Command(BaseCommand):
             if not settings.TALKROUTE_TEST_PHONE:
                 raise CommandError("TALKROUTE_TEST_PHONE is not set in .env")
             from orders.services.scrapers.talkroute import send_message
+
             send_message(settings.TALKROUTE_TEST_PHONE, "testing", order_ref="test")
         else:
             from orders.services.telegram import send_telegram_message
+
             send_telegram_message("testing")
         self.stdout.write("Sent.")

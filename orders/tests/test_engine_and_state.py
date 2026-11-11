@@ -35,6 +35,7 @@ class TestEngineWritesStatus(TestCase):
 
     def test_cancel_sets_cancelled(self):
         from orders.services.engine import cancel_order
+
         self._add("a1")
         cancel_order("a1")
         order = Order.objects.get(order_id="a1")
@@ -43,6 +44,7 @@ class TestEngineWritesStatus(TestCase):
 
     def test_shell_is_created_sent_and_closed_completed(self):
         from orders.services.engine import add_shell_order
+
         add_shell_order("Davis")
         shell = Order.objects.get(is_shell=True)
         self.assertTrue(shell.order_id.startswith("shell_"))
@@ -54,6 +56,7 @@ class TestEngineWritesStatus(TestCase):
 
     def test_storefront_order_is_storefront(self):
         from orders.services.engine import add_storefront_order
+
         add_storefront_order(order_id="s1", customer_name="Walk In", order_time=datetime.now())
         order = Order.objects.get(order_id="s1")
         self.assertEqual(order.status, Order.Status.STOREFRONT)
@@ -62,6 +65,7 @@ class TestEngineWritesStatus(TestCase):
 class TestNoInMemoryState(SimpleTestCase):
     def test_the_state_module_is_gone(self):
         import importlib
+
         with self.assertRaises(ImportError):
             importlib.import_module("orders.services.state")
 
@@ -83,6 +87,7 @@ class TestRestartKeepsEverything(DbTruthCase):
 
     def _pick(self, city):
         from orders.services.engine import _pick_driver
+
         return _pick_driver(city).pk
 
     def _build(self):
@@ -92,6 +97,7 @@ class TestRestartKeepsEverything(DbTruthCase):
         self._add("o2", "Davis")
         self._add("o3", "Fairfield")
         from orders.services.engine import add_shell_order
+
         add_shell_order("Davis")
         for oid in ("o1", "o2", "o3"):
             get_eta(oid)
@@ -109,6 +115,7 @@ class TestRestartKeepsEverything(DbTruthCase):
 
     def test_restart_changes_nothing_when_drivers_moved_today(self):
         from orders.services.startup import reset_stale_driver_locations
+
         self._build()
         before = self._snapshot()
         reset_stale_driver_locations()
@@ -121,6 +128,7 @@ class TestRestartKeepsEverything(DbTruthCase):
 
     def test_restart_resets_a_city_set_on_an_earlier_day(self):
         from orders.services.startup import reset_stale_driver_locations
+
         self._build()
         Driver.objects.filter(pk=self.d1.pk).update(location_updated_at=self.BASE - timedelta(days=1))
         reset_stale_driver_locations()
@@ -134,12 +142,14 @@ class TestRestartKeepsEverything(DbTruthCase):
 
     def test_restart_resets_a_city_that_was_never_timestamped(self):
         from orders.services.startup import reset_stale_driver_locations
+
         driver = Driver.objects.create(name="Old", current_city="Winters", is_active=True)
         reset_stale_driver_locations()
         self.assertEqual(Driver.objects.get(pk=driver.pk).current_city, "Davis")
 
     def test_ready_resets_through_the_apps_hook(self):
         from orders.apps import OrdersConfig
+
         driver = Driver.objects.create(name="Old", current_city="Winters", is_active=True)
         OrdersConfig("orders", __import__("orders"))._reset_stale_driver_locations()
         self.assertEqual(Driver.objects.get(pk=driver.pk).current_city, "Davis")
@@ -154,6 +164,7 @@ class TestOpenOrderQueries(DbTruthCase):
         complete_order("closed")
         self._add("cancelled", "Davis")
         from orders.services.engine import cancel_order
+
         cancel_order("cancelled")
         self.assertEqual([o.order_id for o in queries.open_orders()], ["today"])
 
@@ -170,6 +181,7 @@ class TestOpenOrderQueries(DbTruthCase):
 
     def test_open_shells_count_toward_load_but_not_the_window_count(self):
         from orders.services.engine import add_shell_order
+
         driver = self._driver("D1")
         self._add("o1", "Davis")
         add_shell_order("Davis")
@@ -178,6 +190,7 @@ class TestOpenOrderQueries(DbTruthCase):
 
     def test_pick_driver_prefers_the_less_loaded_driver(self):
         from orders.services.engine import _pick_driver
+
         busy, free = self._driver("Busy"), self._driver("Free")
         self._add("o1", "Davis")  # goes to Busy (lowest id on a tie)
         self.assertEqual(Order.objects.get(order_id="o1").driver_id, busy.pk)
@@ -191,6 +204,7 @@ class TestOpenOrderQueries(DbTruthCase):
 
     def test_a_repeat_complete_webhook_does_not_move_a_driver_or_close_another_shell(self):
         from orders.services.engine import add_shell_order
+
         driver = self._driver("D1")
         self._add("o1", "Fairfield")
         add_shell_order("Fairfield")
@@ -204,6 +218,7 @@ class TestOpenOrderQueries(DbTruthCase):
 
     def test_completing_an_order_from_before_today_closes_a_matching_shell(self):
         from orders.services.engine import add_shell_order
+
         driver = self._driver("D1")
         add_shell_order("Fairfield")
         self._add("old", "Fairfield", when=self.BASE - timedelta(days=1))
@@ -256,18 +271,26 @@ class TestAddOrderWithoutADriver(DbTruthCase):
 
     def test_scheduled_window_is_stored(self):
         start, end = self.BASE + timedelta(hours=3), self.BASE + timedelta(hours=4)
-        add_order(order_city="Davis", order_id="u1", customer_name="C", order_time=self.BASE,
-                  scheduled_start=start, scheduled_end=end)
+        add_order(
+            order_city="Davis",
+            order_id="u1",
+            customer_name="C",
+            order_time=self.BASE,
+            scheduled_start=start,
+            scheduled_end=end,
+        )
         saved = Order.objects.get(order_id="u1")
         self.assertEqual((saved.scheduled_start, saved.scheduled_end), (start, end))
 
     def test_a_shell_still_needs_a_driver(self):
         from orders.services.engine import add_shell_order
+
         with self.assertRaises(ValueError):
             add_shell_order("Davis")
 
     def test_shell_view_does_not_crash_without_a_driver(self):
         from orders.views import add_shell_order_view
+
         with self.assertLogs("orders.views", "WARNING"):
             response = add_shell_order_view(as_dispatcher(RequestFactory().post("/x", {"city": "Davis"})))
         self.assertEqual(response.status_code, 302)
@@ -281,6 +304,7 @@ class TestAssignOrder(DbTruthCase):
 
     def test_queued_order_gets_a_driver_and_an_eta(self):
         from orders.services.engine import assign_order
+
         assign_order("u1", self.driver.pk)
         order = Order.objects.get(order_id="u1")
         self.assertEqual(order.driver_id, self.driver.pk)
@@ -289,6 +313,7 @@ class TestAssignOrder(DbTruthCase):
 
     def test_scheduled_window_wins_when_it_is_no_earlier_than_the_estimate(self):
         from orders.services.engine import assign_order
+
         start, end = self.BASE + timedelta(hours=3), self.BASE + timedelta(hours=4)
         Order.objects.filter(order_id="u1").update(scheduled_start=start, scheduled_end=end)
         assign_order("u1", self.driver.pk)
@@ -297,6 +322,7 @@ class TestAssignOrder(DbTruthCase):
 
     def test_scheduled_window_is_ignored_when_the_estimate_is_later(self):
         from orders.services.engine import assign_order
+
         start, end = self.BASE, self.BASE + timedelta(minutes=10)
         Order.objects.filter(order_id="u1").update(scheduled_start=start, scheduled_end=end)
         assign_order("u1", self.driver.pk)
@@ -304,6 +330,7 @@ class TestAssignOrder(DbTruthCase):
 
     def test_an_already_texted_order_keeps_its_eta(self):
         from orders.services.engine import assign_order
+
         told = (self.BASE + timedelta(hours=1), self.BASE + timedelta(hours=2))
         Order.objects.filter(order_id="u1").update(status=Order.Status.SENT, eta_start=told[0], eta_end=told[1])
         assign_order("u1", self.driver.pk)
@@ -312,6 +339,7 @@ class TestAssignOrder(DbTruthCase):
 
     def test_inactive_driver_cannot_be_assigned(self):
         from orders.services.engine import assign_order
+
         Driver.objects.filter(pk=self.driver.pk).update(is_active=False)
         with self.assertRaises(Driver.DoesNotExist):
             assign_order("u1", self.driver.pk)
@@ -321,9 +349,10 @@ class TestRemoveAndDeleteDriver(DbTruthCase):
     def setUp(self):
         super().setUp()
         from orders.services.engine import add_shell_order
+
         self.d1, self.d2 = self._driver("D1"), self._driver("D2")
-        self._add("queued", "Davis")                       # -> D1
-        self._add("other", "Davis")                        # -> D2
+        self._add("queued", "Davis")  # -> D1
+        self._add("other", "Davis")  # -> D2
         self._add("out", "Davis")
         Order.objects.filter(order_id="out").update(status=Order.Status.SENT, driver=self.d1)
         self._add("done", "Davis")
@@ -334,6 +363,7 @@ class TestRemoveAndDeleteDriver(DbTruthCase):
 
     def test_remove_driver_unassigns_open_orders_including_sent_ones(self):
         from orders.services.engine import remove_driver
+
         remove_driver(self.d1.pk)
         self.assertFalse(Driver.objects.get(pk=self.d1.pk).is_active)
         for oid in ("queued", "out"):
@@ -344,6 +374,7 @@ class TestRemoveAndDeleteDriver(DbTruthCase):
 
     def test_remove_driver_closes_their_shells_and_leaves_others_alone(self):
         from orders.services.engine import remove_driver
+
         remove_driver(self.d1.pk)
         shell = Order.objects.get(is_shell=True)
         self.assertEqual((shell.status, shell.driver_id), (Order.Status.COMPLETED, None))
@@ -352,6 +383,7 @@ class TestRemoveAndDeleteDriver(DbTruthCase):
 
     def test_delete_driver_unassigns_then_deletes(self):
         from orders.services.engine import delete_driver
+
         delete_driver(self.d1.pk)
         self.assertFalse(Driver.objects.filter(pk=self.d1.pk).exists())
         self.assertIsNone(Order.objects.get(order_id="queued").driver_id)
@@ -363,6 +395,7 @@ class TestPhase5bSecurity(TestCase):
 
     def test_anonymous_posts_redirect_to_login(self):
         from django.test import Client
+
         for path in self.NEW_VIEWS:
             with self.subTest(path=path):
                 response = Client().post(path)
@@ -371,6 +404,7 @@ class TestPhase5bSecurity(TestCase):
 
     def test_posts_without_a_csrf_token_are_forbidden(self):
         from django.test import Client
+
         client = Client(enforce_csrf_checks=True)
         client.force_login(User.objects.create_user("dispatcher"))
         for path in self.NEW_VIEWS:
@@ -379,6 +413,7 @@ class TestPhase5bSecurity(TestCase):
 
     def test_get_is_not_allowed(self):
         from django.test import Client
+
         client = Client()
         client.force_login(User.objects.create_user("dispatcher"))
         for path in self.NEW_VIEWS:

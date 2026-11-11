@@ -45,13 +45,21 @@ class TestParseNewOrder(SimpleTestCase):
         self.assertFalse(self.result.is_pending)
 
     def test_scheduled_window_is_parsed(self):
-        cart = {"deliveryTiming": "Scheduled", "scheduledStart": "2025-12-08T18:00:00Z", "scheduledEnd": "2025-12-08T19:00:00Z"}
+        cart = {
+            "deliveryTiming": "Scheduled",
+            "scheduledStart": "2025-12-08T18:00:00Z",
+            "scheduledEnd": "2025-12-08T19:00:00Z",
+        }
         result = parse_new_order(dict(SAMPLE_ORDER, cart=cart, status="Pending"))
         self.assertEqual(result.scheduled_end - result.scheduled_start, timedelta(hours=1))
         self.assertTrue(result.is_pending)
 
     def test_asap_cart_has_no_scheduled_window(self):
-        cart = {"deliveryTiming": "ASAP", "scheduledStart": "2025-12-08T18:00:00Z", "scheduledEnd": "2025-12-08T19:00:00Z"}
+        cart = {
+            "deliveryTiming": "ASAP",
+            "scheduledStart": "2025-12-08T18:00:00Z",
+            "scheduledEnd": "2025-12-08T19:00:00Z",
+        }
         self.assertIsNone(parse_new_order(dict(SAMPLE_ORDER, cart=cart)).scheduled_start)
 
     def test_a_storefront_style_body_without_phone_or_city_still_parses(self):

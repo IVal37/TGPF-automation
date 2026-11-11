@@ -18,10 +18,10 @@ _SAME_CITY_TRAVEL_TIME = 15
 _DEFAULT_TRAVEL_TIME = 30
 
 API_URL = "https://maps.googleapis.com/maps/api/distancematrix/json"
-API_TIMEOUT = 3          # seconds: this can run inside a webhook, so never wait long
+API_TIMEOUT = 3  # seconds: this can run inside a webhook, so never wait long
 STALE_AFTER = timedelta(days=30)
-RETRY_AFTER = 600        # seconds before a pair that just failed is asked about again
-MAX_DESTINATIONS = 25    # Distance Matrix limit per request
+RETRY_AFTER = 600  # seconds before a pair that just failed is asked about again
+MAX_DESTINATIONS = 25  # Distance Matrix limit per request
 
 # pairs that just failed -> time.monotonic() when they may be tried again. Keeps a
 # Google outage from costing a 3-second wait on every route calculation.
@@ -93,7 +93,8 @@ def fetch_minutes(origin: str, destinations: List[str]) -> Dict[str, int]:
 def store_google_minutes(city_a: str, city_b: str, minutes: int) -> None:
     a, b = _pair(city_a, city_b)
     TravelTime.objects.update_or_create(
-        city_a=a, city_b=b,
+        city_a=a,
+        city_b=b,
         defaults={"minutes": minutes, "source": TravelTime.Source.GOOGLE, "fetched_at": timezone.now()},
     )
 
@@ -120,7 +121,10 @@ def get_travel_time(city_a: str, city_b: str) -> int:
             _failed_until[(a, b)] = time.monotonic() + RETRY_AFTER
             logger.warning(
                 "get_travel_time: Google lookup for %s - %s failed, using the stored number: %s: %s",
-                a, b, type(e).__name__, _scrub(str(e)),
+                a,
+                b,
+                type(e).__name__,
+                _scrub(str(e)),
             )
         else:
             store_google_minutes(a, b, minutes)

@@ -27,7 +27,7 @@ class Command(BaseCommand):
         wanted = {}
         fresh = 0
         for i, a in enumerate(names):
-            for b in names[i + 1:]:
+            for b in names[i + 1 :]:
                 if options["force"] or travel.needs_refresh(existing.get((a, b))):
                     wanted.setdefault(a, []).append(b)
                 else:
@@ -36,7 +36,7 @@ class Command(BaseCommand):
         updated = failed = 0
         for origin, destinations in wanted.items():
             for start in range(0, len(destinations), travel.MAX_DESTINATIONS):
-                chunk = destinations[start:start + travel.MAX_DESTINATIONS]
+                chunk = destinations[start : start + travel.MAX_DESTINATIONS]
                 try:
                     answers = travel.fetch_minutes(origin, chunk)
                 except travel.LOOKUP_ERRORS as e:

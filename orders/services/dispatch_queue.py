@@ -4,6 +4,7 @@ Every SMS and every WebJoint write goes through queue_text / queue_webjoint here
 by RESTOCK_TEST_MODE by the caller), so the "texts nobody twice" and test-mode rules live in
 one place. Browser work is only ever enqueued as a task, never run inline.
 """
+
 from __future__ import annotations
 
 import logging
@@ -66,7 +67,11 @@ def clear_queue() -> None:
 
 def clear_error(order: Order) -> None:
     Order.objects.filter(pk=order.pk).update(
-        last_error="", last_error_at=None, last_error_task="", last_error_args={}, last_error_after_commit=False,
+        last_error="",
+        last_error_at=None,
+        last_error_task="",
+        last_error_args={},
+        last_error_after_commit=False,
     )
 
 
@@ -94,7 +99,7 @@ def send_dispatch(order_id: str, eta_start: str = "", eta_end: str = "", as_cash
     elif as_cash:
         # the lookup finished after this page loaded; show the real value first
         raise ActionRejected(
-            f"Order {order_id} now has payment type {order.payment_type}; \"Send as cash\" was ignored. "
+            f'Order {order_id} now has payment type {order.payment_type}; "Send as cash" was ignored. '
             "Check the card and send again."
         )
 
@@ -103,7 +108,7 @@ def send_dispatch(order_id: str, eta_start: str = "", eta_end: str = "", as_cash
             start_time = datetime.strptime(eta_start, "%H:%M").time()
             end_time = datetime.strptime(eta_end, "%H:%M").time()
         except ValueError:
-            raise ActionRejected(f"Order {order_id}: \"{eta_start}\" - \"{eta_end}\" is not a valid time window.") from None
+            raise ActionRejected(f'Order {order_id}: "{eta_start}" - "{eta_end}" is not a valid time window.') from None
         base_date = order.eta_start.date() if order.eta_start else datetime.now().date()
         order.set_etas(datetime.combine(base_date, start_time), datetime.combine(base_date, end_time))
 
@@ -121,7 +126,9 @@ def send_reschedule(order_id: str) -> None:
         return
     queue_text(order_id, order.customer_phone, reschedule_text(order))
     queue_webjoint(
-        tasks.fill_order_notes_task, order.order_id, order.webjoint_id,
+        tasks.fill_order_notes_task,
+        order.order_id,
+        order.webjoint_id,
         "reached out about rescheduling for tomorrow morning",
     )
 
@@ -131,7 +138,10 @@ def assign_driver(order_id: str, driver_id: Optional[str]) -> None:
     normal Dispatch Queue card; one that was already texted just gets the driver (the customer
     keeps the ETA they were told)."""
     order = Order.objects.filter(
-        order_id=order_id, status__in=OPEN_STATUSES, is_shell=False, driver__isnull=True,
+        order_id=order_id,
+        status__in=OPEN_STATUSES,
+        is_shell=False,
+        driver__isnull=True,
     ).first()
     driver = Driver.objects.filter(pk=driver_id, is_active=True).first() if str(driver_id).isdigit() else None
     if order is None or driver is None:
@@ -167,7 +177,9 @@ def link_orders(order_id: str, primary_order_id: str) -> None:
 
     if not settings.RESTOCK_TEST_MODE:
         queue_webjoint(
-            tasks.fill_order_notes_task, companion.order_id, companion.webjoint_id,
+            tasks.fill_order_notes_task,
+            companion.order_id,
+            companion.webjoint_id,
             f"second part of {primary.customer_name}'s order",
         )
 

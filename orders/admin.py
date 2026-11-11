@@ -4,6 +4,7 @@ from orders.models import City, CustomerFlag, SpecialAddress, TravelTime
 
 # Business config: change it here, no deploy needed.
 
+
 @admin.register(City)
 class CityAdmin(admin.ModelAdmin):
     list_display = ("name", "minimum")

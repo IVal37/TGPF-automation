@@ -60,7 +60,13 @@ class TestUnderMinText(TestCase):
 class TestRenderDispatchText(TestCase):  # flagged customers (merchant pay) are read from the database
     def _render(self, name="Hailey", last_name="White", payment_type="Cash"):
         return render_dispatch_text(
-            name, last_name, Decimal("13.20"), Decimal("77.25"), payment_type, "2:30", "3:30",
+            name,
+            last_name,
+            Decimal("13.20"),
+            Decimal("77.25"),
+            payment_type,
+            "2:30",
+            "3:30",
         )
 
     def test_shows_eta_window(self):
@@ -116,36 +122,51 @@ class TestIsFsaFsm(SimpleTestCase):
 class TestGetEffectiveTotal(TestCase):
     def test_no_companion_returns_order_total_unchanged(self):
         order = Order.objects.create(
-            order_id="e1", customer_name="Jane Doe", city="Davis",
+            order_id="e1",
+            customer_name="Jane Doe",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            total=Decimal("50.00"), delivery_fee=Decimal("5.00"),
+            total=Decimal("50.00"),
+            delivery_fee=Decimal("5.00"),
         )
         self.assertEqual(effective_total(order), Decimal("50.00"))
 
     def test_linked_companion_with_matching_fees(self):
         primary = Order.objects.create(
-            order_id="e2", customer_name="Jane Doe", city="Davis",
+            order_id="e2",
+            customer_name="Jane Doe",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            total=Decimal("50.00"), delivery_fee=Decimal("5.00"),
+            total=Decimal("50.00"),
+            delivery_fee=Decimal("5.00"),
         )
         Order.objects.create(
-            order_id="e3", customer_name="Frank Sinatra Adult", city="Davis",
+            order_id="e3",
+            customer_name="Frank Sinatra Adult",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            total=Decimal("30.00"), delivery_fee=Decimal("5.00"),
+            total=Decimal("30.00"),
+            delivery_fee=Decimal("5.00"),
             linked_order=primary,
         )
         self.assertEqual(effective_total(primary), Decimal("75.00"))  # 50 + 30 - 5
 
     def test_linked_companion_with_mismatched_fees_subtracts_lower(self):
         primary = Order.objects.create(
-            order_id="e4", customer_name="Jane Doe", city="Davis",
+            order_id="e4",
+            customer_name="Jane Doe",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            total=Decimal("50.00"), delivery_fee=Decimal("7.00"),
+            total=Decimal("50.00"),
+            delivery_fee=Decimal("7.00"),
         )
         Order.objects.create(
-            order_id="e5", customer_name="Frank Sinatra Medical", city="Davis",
+            order_id="e5",
+            customer_name="Frank Sinatra Medical",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            total=Decimal("30.00"), delivery_fee=Decimal("5.00"),
+            total=Decimal("30.00"),
+            delivery_fee=Decimal("5.00"),
             linked_order=primary,
         )
         self.assertEqual(effective_total(primary), Decimal("75.00"))  # 50 + 30 - min(7,5)
@@ -154,25 +175,37 @@ class TestGetEffectiveTotal(TestCase):
 class TestCombinedTotalInMessaging(TestCase):
     def setUp(self):
         self.primary = Order.objects.create(
-            order_id="m1", customer_name="Jane Doe", customer_phone="15305551111",
-            city="Davis", order_date=datetime(2026, 7, 20, 14, 0, 0),
-            eta_start=datetime(2026, 7, 20, 14, 30, 0), eta_end=datetime(2026, 7, 20, 15, 30, 0),
-            payment_type="Cash", total=Decimal("50.00"), discount=Decimal("0.00"),
-            delivery_fee=Decimal("5.00"), source="POS",
+            order_id="m1",
+            customer_name="Jane Doe",
+            customer_phone="15305551111",
+            city="Davis",
+            order_date=datetime(2026, 7, 20, 14, 0, 0),
+            eta_start=datetime(2026, 7, 20, 14, 30, 0),
+            eta_end=datetime(2026, 7, 20, 15, 30, 0),
+            payment_type="Cash",
+            total=Decimal("50.00"),
+            discount=Decimal("0.00"),
+            delivery_fee=Decimal("5.00"),
+            source="POS",
         )
         Order.objects.create(
-            order_id="m2", customer_name="Frank Sinatra Adult", city="Davis",
+            order_id="m2",
+            customer_name="Frank Sinatra Adult",
+            city="Davis",
             order_date=datetime(2026, 7, 20, 14, 0, 0),
-            total=Decimal("30.00"), delivery_fee=Decimal("5.00"),
+            total=Decimal("30.00"),
+            delivery_fee=Decimal("5.00"),
             linked_order=self.primary,
         )
 
     def test_dispatch_msg_uses_combined_total(self):
         from orders.services.customer_texts import dispatch_text as build_dispatch_msg_from_order
+
         msg = build_dispatch_msg_from_order(self.primary)
         self.assertIn("$75.00", msg)  # 50 + 30 - 5, Cash -> unchanged
 
     def test_order_notes_use_combined_total(self):
         from orders.services.note import get_order_notes
+
         notes = get_order_notes(self.primary)
         self.assertIn("77.25", notes)  # 75.00 * 1.03

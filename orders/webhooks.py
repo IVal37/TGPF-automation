@@ -53,4 +53,5 @@ def require_webhook_key(view: Callable[..., HttpResponse]) -> Callable[..., Http
             logger.warning("webhook rejected: wrong key for %s from %s", view.__name__, client_ip(request))
             return HttpResponseForbidden()
         return view(request, *args, **kwargs)
+
     return wrapper
