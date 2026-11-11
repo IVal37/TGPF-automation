@@ -19,7 +19,6 @@ import tempfile
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import SimpleTestCase, override_settings
@@ -31,7 +30,7 @@ from orders.services.scrapers import browser, merchant_pay, talkroute, webjoint,
 from orders.services.scrapers.errors import BeforeCommitError
 from orders.services.scrapers.browser import ci_contains
 
-TRACE_DIR = Path(__file__).parent / "fixtures" / "scraper_traces"
+TRACE_DIR = Path(__file__).resolve().parent.parent / "fixtures" / "scraper_traces"
 
 # fake credentials so the real .env values never end up in a golden file
 FAKE_ENV = {

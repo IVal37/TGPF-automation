@@ -13,7 +13,7 @@ from django.test import Client, SimpleTestCase, TestCase, override_settings
 from orders.models import Driver, Notice, Order
 from orders.services import dashboard
 from orders.services.customers import customer_label, split_name
-from orders.tests import POS_ORDER, SAMPLE_ORDER
+from orders.tests.helpers import POS_ORDER
 
 KEY = settings.WEBHOOK_SECRET
 

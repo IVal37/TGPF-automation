@@ -1,0 +1,17 @@
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+extend-exclude = ["orders/migrations", ".venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",    # long lines are reported by the formatter's width, not as errors (messages/SQL read better whole)
+    "B904",    # `raise ... from None` is used where the cause would only be noise
+    "SIM105",  # an explicit try/except/pass reads clearer in the scrapers
+    "SIM108",  # ternaries are not always clearer
+    "UP006", "UP007", "UP035",  # typing.List/Optional are fine on Python 3.8
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["orders", "TGPFflows"]

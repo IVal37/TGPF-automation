@@ -5,7 +5,6 @@ They are the reference the seeded database must reproduce exactly.
 """
 import importlib
 import io
-import logging
 from datetime import timedelta
 from decimal import Decimal
 from itertools import product
@@ -19,7 +18,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.test import Client, RequestFactory, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
 
-from orders.models import City, CustomerFlag, Order, SpecialAddress, TravelTime
+from orders.models import City, CustomerFlag, SpecialAddress, TravelTime
 from orders.services import config, travel
 
 OLD_CITY_MINS = {
@@ -176,7 +175,7 @@ class TestNewOrderUsesTheConfig(TestCase):
     def _post(self, **shipping):
         import json
         from django.conf import settings
-        from orders.tests import POS_ORDER
+        from orders.tests.helpers import POS_ORDER
         from orders.views import new_order
         payload = {**POS_ORDER, "shipping": {"city": "Davis", **shipping}}
         request = RequestFactory().post("/new_order", data=json.dumps(payload), content_type="application/json")

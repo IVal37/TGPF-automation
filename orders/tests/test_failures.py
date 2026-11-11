@@ -19,14 +19,10 @@ from django.test import Client, RequestFactory, SimpleTestCase, TestCase, overri
 from orders.models import Driver, Notice, Order
 from orders.services.scrapers.errors import BeforeCommitError, at_commit, before_commit, fail
 from orders.tasks import RETRYABLE_TASKS, failure_text
+from orders.tests.helpers import as_dispatcher
 
 WJ = "1111-2222-3333333-9001"
 BASE = datetime(2026, 7, 20, 14, 0, 0)
-
-
-def _as_dispatcher(request):
-    request.user = User(username="dispatcher")
-    return request
 
 
 def _order(**extra):
@@ -272,7 +268,7 @@ class TestSendingStatus(TestCase):
         from orders import views
         request = RequestFactory().post("/x", {"order_id": "9001", "eta_start": "14:45", "eta_end": "15:45", **extra})
         with patch("orders.tasks.send_message_task") as send_task, patch("orders.tasks.fill_order_notes_task"):
-            getattr(views, view_name)(_as_dispatcher(request))
+            getattr(views, view_name)(as_dispatcher(request))
         return send_task
 
     @override_settings(RESTOCK_TEST_MODE=False)
@@ -283,7 +279,7 @@ class TestSendingStatus(TestCase):
         request = RequestFactory().post("/x", {"order_id": "9001", "eta_start": "14:45", "eta_end": "15:45"})
         with patch("orders.tasks.send_message_task") as send_task, patch("orders.tasks.fill_order_notes_task"):
             send_task.delay.side_effect = lambda *a: statuses.append(Order.objects.get(order_id="9001").status)
-            views.send_dispatch_msg_view(_as_dispatcher(request))
+            views.send_dispatch_msg_view(as_dispatcher(request))
         self.assertEqual(statuses, [Order.Status.SENDING])
         self.assertEqual(Order.objects.get(order_id="9001").status, Order.Status.SENDING)
 
@@ -314,7 +310,7 @@ class TestSendingStatus(TestCase):
 class TestErrorCard(TestCase):
     def _html(self):
         from orders.views import pending_orders_partial
-        return pending_orders_partial(_as_dispatcher(RequestFactory().get("/p"))).content.decode()
+        return pending_orders_partial(as_dispatcher(RequestFactory().get("/p"))).content.decode()
 
     def setUp(self):
         self.driver = Driver.objects.create(name="D1", is_active=True)
@@ -361,7 +357,7 @@ class TestRetryAndDismissViews(TestCase):
 
     def _post(self, view_name, **data):
         from orders import views
-        return getattr(views, view_name)(_as_dispatcher(RequestFactory().post("/x", data)))
+        return getattr(views, view_name)(as_dispatcher(RequestFactory().post("/x", data)))
 
     def _failed(self, **extra):
         fields = dict(
@@ -443,7 +439,7 @@ class TestRetryAndDismissViews(TestCase):
     def test_dismiss_notice(self):
         from orders.views import dismiss_notice_view
         notice = Notice.objects.create(message="hello")
-        dismiss_notice_view(_as_dispatcher(RequestFactory().post("/x", {"notice_id": notice.pk})))
+        dismiss_notice_view(as_dispatcher(RequestFactory().post("/x", {"notice_id": notice.pk})))
         notice.refresh_from_db()
         self.assertTrue(notice.dismissed)
 
@@ -620,7 +616,7 @@ class TestNoTelegramOutsideTheRestockDigests(SimpleTestCase):
         root = Path(settings.BASE_DIR) / "orders"
         users = sorted(
             str(p.relative_to(root)) for p in root.rglob("*.py")
-            if "telegram" in p.read_text().lower() and "tests" not in p.name and "migrations" not in p.parts
+            if "telegram" in p.read_text().lower() and "tests" not in p.parts and "migrations" not in p.parts
         )
         # send_test_message is the manual "does the channel work" command; it refuses in test mode
         self.assertEqual(users, ["management/commands/send_test_message.py", "services/telegram.py", "tasks.py"])
