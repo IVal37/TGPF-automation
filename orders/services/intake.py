@@ -1,14 +1,11 @@
 """Handling a new WebJoint order: save it, route it, and queue the texts and WebJoint work it needs.
 
-The webhook view only parses the request and calls handle_new_order. Every SMS and WebJoint
-write here is gated by RESTOCK_TEST_MODE.
+The webhook view only parses the request and calls handle_new_order.
 """
 
 from __future__ import annotations
 
 import logging
-
-from django.conf import settings
 
 from orders import tasks
 from orders.models import Order, OrderStatus, SpecialAddress
@@ -61,8 +58,8 @@ def _handle_delivery_order(payload: NewOrderPayload) -> None:
 
     # WebJoint's webhook always labels Weedmaps orders "Cash", so their real payment type is
     # looked up on Weedmaps by a background task; until it lands the order's payment_type stays
-    # empty and the dashboard holds Send. In test mode nothing is scraped and the label is kept.
-    resolve_payment = is_weedmaps_source(payload.source) and not settings.RESTOCK_TEST_MODE
+    # empty and the dashboard holds Send.
+    resolve_payment = is_weedmaps_source(payload.source)
 
     order = add_order(
         order_city=payload.city,
@@ -94,9 +91,6 @@ def _handle_delivery_order(payload: NewOrderPayload) -> None:
     elif not unassigned:
         estimate_window(order_id)
     Order.objects.filter(order_id=order_id).update(payment_type="" if resolve_payment else payload.payment_type)
-
-    if settings.RESTOCK_TEST_MODE:
-        return
 
     if under_min:
         # no ETA window in this message, nothing to double-check: auto-send

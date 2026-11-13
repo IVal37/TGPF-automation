@@ -1,8 +1,8 @@
 """Texting customers and writing WebJoint notes for orders, and the dispatcher's actions on the Dispatch Queue.
 
-Every SMS and every WebJoint write goes through queue_text / queue_webjoint here (or is gated
-by RESTOCK_TEST_MODE by the caller), so the "texts nobody twice" and test-mode rules live in
-one place. Browser work is only ever enqueued as a task, never run inline.
+Every SMS and every WebJoint write goes through queue_text / queue_webjoint here, so the
+"texts nobody twice" rule lives in one place. Browser work is only ever enqueued as a task,
+never run inline.
 """
 
 from __future__ import annotations
@@ -11,7 +11,6 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from django.conf import settings
 from django.db.models import Q
 
 from orders import tasks
@@ -112,18 +111,12 @@ def send_dispatch(order_id: str, eta_start: str = "", eta_end: str = "", as_cash
         base_date = order.eta_start.date() if order.eta_start else datetime.now().date()
         order.set_etas(datetime.combine(base_date, start_time), datetime.combine(base_date, end_time))
 
-    if settings.RESTOCK_TEST_MODE:
-        mark_sent(order_id)
-        return
     queue_text(order_id, order.customer_phone, dispatch_text(order))
     queue_webjoint(tasks.fill_order_notes_task, order.order_id, order.webjoint_id, get_order_notes(order))
 
 
 def send_reschedule(order_id: str) -> None:
     order = _get_queued(order_id)
-    if settings.RESTOCK_TEST_MODE:
-        mark_sent(order_id)
-        return
     queue_text(order_id, order.customer_phone, reschedule_text(order))
     queue_webjoint(
         tasks.fill_order_notes_task,
@@ -150,7 +143,7 @@ def assign_driver(order_id: str, driver_id: Optional[str]) -> None:
 
     assign_order_to_driver(order.order_id, driver.pk)
 
-    if was_queued and config.is_no_text_customer(order.customer_name) and not settings.RESTOCK_TEST_MODE:
+    if was_queued and config.is_no_text_customer(order.customer_name):
         # new orders skip this customer's notes while there is no driver/ETA
         fresh = Order.objects.get(order_id=order.order_id)
         if fresh.payment_type:
@@ -175,13 +168,12 @@ def link_orders(order_id: str, primary_order_id: str) -> None:
     companion.status = OrderStatus.SENT
     companion.save()
 
-    if not settings.RESTOCK_TEST_MODE:
-        queue_webjoint(
-            tasks.fill_order_notes_task,
-            companion.order_id,
-            companion.webjoint_id,
-            f"second part of {primary.customer_name}'s order",
-        )
+    queue_webjoint(
+        tasks.fill_order_notes_task,
+        companion.order_id,
+        companion.webjoint_id,
+        f"second part of {primary.customer_name}'s order",
+    )
 
 
 def unlink_order(order_id: str) -> None:
@@ -203,9 +195,7 @@ def retry_failed_task(order_id: str) -> None:
         raise NotFound(f"no retryable task recorded for order {order_id}")
     payload = order.last_error_args or {}
     clear_error(order)
-    # like every other browser task, only queued outside test mode
-    if not settings.RESTOCK_TEST_MODE:
-        task.delay(*payload.get("args", []), **payload.get("kwargs", {}))
+    task.delay(*payload.get("args", []), **payload.get("kwargs", {}))
 
 
 def dismiss_error(order_id: str) -> None:

@@ -5,7 +5,7 @@ import inspect
 import logging
 import re
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, NamedTuple, Optional, Tuple
 
 # imports from django
 from django.conf import settings
@@ -25,6 +25,7 @@ from orders.services.scrapers.browser import (
     click_at_commit,
     click_with_js_fallback,
     fill,
+    report_failure,
     scroll_into_view,
 )
 from orders.services.scrapers.errors import BeforeCommitError, at_commit, before_commit, fail
@@ -39,6 +40,10 @@ _ORDER_TITLE = (By.CSS_SELECTOR, '[data-test="page-title"]')
 _ORDER_TITLE_RE = re.compile(r"Order\s*#\s*(\S+)")
 _SAVE_CHANGES_XPATH = '//button[contains(.,"Save Changes")]'
 _CANCEL_XPATH = '//*[text()="Cancel"]'
+# The order page's item rows are the only table rows with an edit (pencil) button. Matching every
+# `//tbody/tr` also catches the driver-assignment row below them, which has none.
+_EDIT_BUTTON_XPATH = './/button[.//*[local-name()="path"][contains(@d,"M3 17.25")]]'
+_ITEM_ROWS_XPATH = f"//tbody/tr[{_EDIT_BUTTON_XPATH}]"
 
 
 # raised when the page that opened is not the order we meant to act on. Nothing
@@ -174,6 +179,10 @@ def fill_order_notes(driver, wait, order_id: str, order_notes: str) -> None:
 # since a retry could repeat a save that went through).
 @_webjoint_session
 def pull_from_chiles(driver, wait, order_id: str) -> None:
+    _pull_from_chiles(driver, wait, order_id)
+
+
+def _pull_from_chiles(driver, wait, order_id: str) -> None:
     with before_commit("open order"):
         _open_order(driver, wait, order_id)
 
@@ -184,7 +193,7 @@ def pull_from_chiles(driver, wait, order_id: str) -> None:
     try:
         kit_removals = []
         # iterate by index so pass-cases don't re-visit the same row (would cause infinite loop)
-        row_count = len(driver.find_elements(By.XPATH, "//tbody/tr"))
+        row_count = len(driver.find_elements(By.XPATH, _ITEM_ROWS_XPATH))
         for idx in range(row_count):
             try:
                 if not _pull_row(driver, wait, idx, kit_removals, committed):
@@ -211,7 +220,7 @@ def pull_from_chiles(driver, wait, order_id: str) -> None:
 def _pull_row(driver, wait, idx: int, kit_removals: list, committed: list) -> bool:
     """Handle one row of the order's item table: move its pull to Chiles, or note a kit to
     remove it from. Returns False when the table has fewer rows than expected (stop looping)."""
-    rows = driver.find_elements(By.XPATH, "//tbody/tr")
+    rows = driver.find_elements(By.XPATH, _ITEM_ROWS_XPATH)
     if idx >= len(rows):
         return False  # fewer rows than expected: stop
     row = rows[idx]
@@ -221,7 +230,7 @@ def _pull_row(driver, wait, idx: int, kit_removals: list, committed: list) -> bo
         return True  # purely Chiles, nothing to do
     is_split = has_chiles and has_shift
 
-    edit_btn = row.find_element(By.XPATH, './/button[.//*[local-name()="path"][contains(@d,"M3 17.25")]]')
+    edit_btn = row.find_element(By.XPATH, _EDIT_BUTTON_XPATH)
     scroll_into_view(driver, edit_btn)
     time.sleep(0.5)
     edit_btn.click()
@@ -377,6 +386,10 @@ def _remove_from_kits(driver, wait, order_id: str, kit_removals: list, committed
 # safe); the confirm click and what follows propagate as-is, never auto-retried.
 @_webjoint_session
 def dispatch_to_driver(driver, wait, order_id: str) -> None:
+    _dispatch_to_driver(driver, wait, order_id)
+
+
+def _dispatch_to_driver(driver, wait, order_id: str) -> None:
     confirm_locator = (By.XPATH, "/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]")
     with before_commit("open order"):
         _open_order(driver, wait, order_id)
@@ -406,6 +419,31 @@ def dispatch_to_driver(driver, wait, order_id: str) -> None:
     with at_commit("confirm dispatch"):
         click_at_commit(wait, confirm_locator, confirm_button)
         time.sleep(1)
+
+
+class StepFailure(NamedTuple):
+    step: str  # the scraper that failed: "dispatch_to_driver" or "pull_from_chiles"
+    error: Exception
+
+
+# A new order's two WebJoint jobs in ONE login: dispatch it to a driver first (only when `dispatch`
+# is true), then pull its items from Chiles. A step that fails must not stop the other, so each
+# one's failure is caught here, given the screenshot and page source it would have had in a session
+# of its own, and returned for the task to classify (a BeforeCommitError is safe to retry, anything
+# else may have gone through). A failed login raises BeforeCommitError before either step starts.
+@_webjoint_session
+def prepare_order(driver, wait, order_id: str, dispatch: bool) -> List[StepFailure]:
+    steps = [("dispatch_to_driver", _dispatch_to_driver)] if dispatch else []
+    steps.append(("pull_from_chiles", _pull_from_chiles))
+    failures = []
+    for name, step in steps:
+        try:
+            step(driver, wait, order_id)
+        except Exception as e:
+            logger.exception("prepare_order (order %s): %s failed", order_id, name)
+            report_failure(driver, name, order_id, e)
+            failures.append(StepFailure(name, e))
+    return failures
 
 
 # the dropdown option whose full rendered text exactly matches `text`, or None.

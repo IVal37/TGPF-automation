@@ -41,8 +41,6 @@ for _name, _value in (("DJANGO_SECRET_KEY", SECRET_KEY), ("WEBHOOK_SECRET", WEBH
 
 # run Chrome without a window
 HEADLESS = env_bool("HEADLESS")
-# suppresses every SMS and WebJoint write (see CLAUDE.md)
-RESTOCK_TEST_MODE = env_bool("RESTOCK_TEST_MODE")
 
 # never on in production or behind a tunnel
 DEBUG = env_bool("DJANGO_DEBUG")
@@ -218,19 +216,26 @@ CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 # a re-run send_message_task would text the customer twice
 
 CELERY_BEAT_SCHEDULE = {
+    # Each digest is told its own time (kwargs) and skips itself when it runs long after it, so a
+    # run Celery beat "catches up" when the stack starts (or a job a downed worker finally picks
+    # up) does not post a stale digest. See is_stale_digest in orders/tasks.py.
+    #
     # 3rd St storefront closes at 8:30pm every day
     "send-third-st-restock": {
         "task": "orders.tasks.send_third_st_restock",
         "schedule": crontab(hour=20, minute=30),
+        "kwargs": {"hour": 20, "minute": 30},
     },
     # the delivery side's closing hours come from orders/services/hours.py
     "send-delivery-restock-weekday": {
         "task": "orders.tasks.send_delivery_restock",
         "schedule": crontab(hour=WEEKDAY_CLOSE, minute=0, day_of_week="mon,tue,wed,thu,fri,sat"),
+        "kwargs": {"hour": WEEKDAY_CLOSE, "minute": 0},
     },
     "send-delivery-restock-sunday": {
         "task": "orders.tasks.send_delivery_restock",
         "schedule": crontab(hour=SUNDAY_CLOSE, minute=0, day_of_week="sun"),
+        "kwargs": {"hour": SUNDAY_CLOSE, "minute": 0},
     },
 }
 

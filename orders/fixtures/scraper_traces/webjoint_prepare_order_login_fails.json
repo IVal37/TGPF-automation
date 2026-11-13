@@ -1,0 +1,54 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {
+    "prefs": {
+     "profile.default_content_setting_values.notifications": 2
+    }
+   }
+  }
+ ],
+ [
+  "get",
+  "https://order.thegoodpeoplefarms.com/admin/index.html#/"
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c13"
+ ],
+ [
+  "find_element",
+  "class name",
+  "c199.c13"
+ ],
+ [
+  "save_screenshot",
+  "prepare_order-1111-2222-3333333-4444444-20260720-140000.png"
+ ],
+ [
+  "page_source"
+ ],
+ [
+  "log",
+  "ERROR",
+  "prepare_order (order 1111-2222-3333333-4444444): failed at step 'login': TimeoutException: Message:"
+ ],
+ [
+  "quit"
+ ],
+ [
+  "raised",
+  "BeforeCommitError",
+  "login",
+  "TimeoutException: Message:"
+ ],
+ [
+  "return",
+  null
+ ]
+]

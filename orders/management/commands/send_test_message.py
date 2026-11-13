@@ -15,9 +15,6 @@ class Command(BaseCommand):
         channel.add_argument("--telegram", action="store_true", help="post to the Telegram channel")
 
     def handle(self, *args, **options) -> None:
-        if settings.RESTOCK_TEST_MODE:
-            raise CommandError("RESTOCK_TEST_MODE is on: this command really sends, so it will not run.")
-
         if options["sms"]:
             if not settings.TALKROUTE_TEST_PHONE:
                 raise CommandError("TALKROUTE_TEST_PHONE is not set in .env")

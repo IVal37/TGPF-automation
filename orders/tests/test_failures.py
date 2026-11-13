@@ -19,6 +19,7 @@ from django.test import Client, RequestFactory, SimpleTestCase, TestCase, overri
 
 from orders.models import Driver, Notice, Order
 from orders.services.scrapers.errors import BeforeCommitError, at_commit, before_commit, fail
+from orders.services.scrapers.webjoint import StepFailure
 from orders.tasks import RETRYABLE_TASKS, failure_text
 from orders.tests.helpers import as_dispatcher
 
@@ -207,45 +208,68 @@ class TestTasksRetryOnlyBeforeTheCommit(TestCase):
 
 
 class TestPrepareOrderTaskNeverRepeatsAStep(TestCase):
-    def _run(self, pull=None, dispatch=None, dispatch_flag=True):
+    """prepare_order (one WebJoint login, both steps) reports which steps failed; the task decides
+    what is safe to retry. No step may ever run twice."""
+
+    def _run(self, failures=(), dispatch_flag=True, scraper_error=None):
         from orders.tasks import prepare_order_task
 
-        with patch("orders.tasks.pull_from_chiles", side_effect=pull) as pull_mock, patch(
-            "orders.tasks.dispatch_to_driver", side_effect=dispatch
-        ) as dispatch_mock, patch("orders.tasks.pull_from_chiles_task") as pull_task, patch(
-            "orders.tasks.dispatch_to_driver_task"
-        ) as dispatch_task, self.assertLogs("orders.tasks", "ERROR") if (pull or dispatch) else patch(
-            "orders.tasks.logger"
-        ):
-            result = prepare_order_task.apply(args=[WJ, dispatch_flag])
-        return result, pull_mock, dispatch_mock, pull_task, dispatch_task
+        with patch("orders.tasks.prepare_order", return_value=list(failures), side_effect=scraper_error) as scraper:
+            with patch("orders.tasks.pull_from_chiles_task") as pull_task, patch(
+                "orders.tasks.dispatch_to_driver_task"
+            ) as dispatch_task, patch.dict(
+                "orders.tasks._STEP_TASKS", {"pull_from_chiles": pull_task, "dispatch_to_driver": dispatch_task}
+            ), patch("orders.tasks.logger"):
+                result = prepare_order_task.apply(args=[WJ, dispatch_flag])
+        return result, scraper, pull_task, dispatch_task
+
+    def test_a_clean_run_hands_nothing_off(self):
+        result, scraper, pull_task, dispatch_task = self._run()
+        scraper.assert_called_once_with(WJ, True)
+        pull_task.delay.assert_not_called()
+        dispatch_task.delay.assert_not_called()
+        self.assertTrue(result.successful())
 
     def test_a_pull_that_failed_before_its_commit_is_handed_to_its_own_retrying_task(self):
-        result, pull, dispatch, pull_task, dispatch_task = self._run(pull=_boom("open order"))
-        dispatch.assert_called_once_with(WJ)  # the dispatch still ran
+        result, scraper, pull_task, dispatch_task = self._run([StepFailure("pull_from_chiles", _boom("open order"))])
         pull_task.delay.assert_called_once_with(WJ)  # the pull retries on its own
-        dispatch_task.delay.assert_not_called()
-        self.assertEqual(pull.call_count, 1)  # this task did not retry the dispatch
+        dispatch_task.delay.assert_not_called()  # the dispatch is not repeated
+        self.assertEqual(scraper.call_count, 1)
         self.assertTrue(result.successful())
 
     def test_a_dispatch_that_failed_before_its_commit_is_handed_off_without_repeating_the_pull(self):
-        result, pull, dispatch, pull_task, dispatch_task = self._run(dispatch=_boom("assign driver"))
-        pull.assert_called_once_with(WJ)
+        result, scraper, pull_task, dispatch_task = self._run(
+            [StepFailure("dispatch_to_driver", _boom("assign driver"))]
+        )
         dispatch_task.delay.assert_called_once_with(WJ)
         pull_task.delay.assert_not_called()
-        self.assertEqual(dispatch.call_count, 1)
+        self.assertEqual(scraper.call_count, 1)
+
+    def test_both_steps_failing_before_their_commit_are_each_handed_off_once(self):
+        failures = [StepFailure("dispatch_to_driver", _boom("assign driver")), StepFailure("pull_from_chiles", _boom())]
+        result, scraper, pull_task, dispatch_task = self._run(failures)
+        dispatch_task.delay.assert_called_once_with(WJ)
+        pull_task.delay.assert_called_once_with(WJ)
+        self.assertEqual(scraper.call_count, 1)
 
     def test_a_failure_after_the_commit_is_raised_and_not_handed_off(self):
         exc = RuntimeError("click failed")
         exc.step = "confirm dispatch"
-        result, pull, dispatch, pull_task, dispatch_task = self._run(dispatch=exc)
+        result, scraper, pull_task, dispatch_task = self._run([StepFailure("dispatch_to_driver", exc)])
         dispatch_task.delay.assert_not_called()
-        self.assertEqual(dispatch.call_count, 1)
+        pull_task.delay.assert_not_called()
+        self.assertEqual(scraper.call_count, 1)
         self.assertTrue(result.failed())
 
+    def test_a_failed_login_retries_the_whole_task_and_hands_nothing_off(self):
+        result, scraper, pull_task, dispatch_task = self._run(scraper_error=_boom("login"))
+        self.assertEqual(scraper.call_count, 3)  # the first run and its two automatic retries
+        pull_task.delay.assert_not_called()
+        dispatch_task.delay.assert_not_called()
+
     def test_nothing_is_dispatched_when_not_asked(self):
-        result, pull, dispatch, *_ = self._run(dispatch_flag=False)
-        dispatch.assert_not_called()
+        result, scraper, *_ = self._run(dispatch_flag=False)
+        scraper.assert_called_once_with(WJ, False)
 
 
 class TestSendMessageTask(TestCase):
@@ -300,7 +324,6 @@ class TestSendingStatus(TestCase):
             getattr(views, view_name)(as_dispatcher(request))
         return send_task
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_send_sets_sending_before_the_task_runs(self):
         _order(driver=self.driver)
         statuses = []
@@ -313,7 +336,6 @@ class TestSendingStatus(TestCase):
         self.assertEqual(statuses, [Order.Status.SENDING])
         self.assertEqual(Order.objects.get(order_id="9001").status, Order.Status.SENDING)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_a_second_send_cannot_text_the_customer_again(self):
         _order(driver=self.driver)
         first = self._send()
@@ -321,20 +343,12 @@ class TestSendingStatus(TestCase):
         with self.assertRaises(Http404):
             self._send()
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_reschedule_sets_sending_too_and_blocks_a_second_send(self):
         _order(driver=self.driver)
         self._send("send_reschedule_msg_view")
         self.assertEqual(Order.objects.get(order_id="9001").status, Order.Status.SENDING)
         with self.assertRaises(Http404):
             self._send("send_reschedule_msg_view")
-
-    @override_settings(RESTOCK_TEST_MODE=True)
-    def test_test_mode_texts_nobody_and_goes_straight_to_sent(self):
-        _order(driver=self.driver)
-        send_task = self._send()
-        send_task.delay.assert_not_called()
-        self.assertEqual(Order.objects.get(order_id="9001").status, Order.Status.SENT)
 
 
 class TestErrorCard(TestCase):
@@ -414,7 +428,6 @@ class TestRetryAndDismissViews(TestCase):
         fields.update(extra)
         return _order(**fields)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_retry_requeues_the_same_task_with_the_same_arguments_and_clears_the_error(self):
         self._failed()
         with patch.dict(RETRYABLE_TASKS, {"orders.tasks.send_message_task": MagicMock()}) as tasks:
@@ -425,7 +438,6 @@ class TestRetryAndDismissViews(TestCase):
         self.assertIsNone(order.last_error_at)
         self.assertEqual(order.status, Order.Status.SENDING)  # still waiting on the retried text
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_retry_keeps_keyword_arguments(self):
         self._failed(
             last_error_task="orders.tasks.resolve_payment_type_task",
@@ -434,14 +446,6 @@ class TestRetryAndDismissViews(TestCase):
         with patch.dict(RETRYABLE_TASKS, {"orders.tasks.resolve_payment_type_task": MagicMock()}) as tasks:
             self._post("retry_task_view", order_id="9001")
             tasks["orders.tasks.resolve_payment_type_task"].delay.assert_called_once_with("9001", write_notes=True)
-
-    @override_settings(RESTOCK_TEST_MODE=True)
-    def test_retry_in_test_mode_queues_nothing(self):
-        self._failed()
-        with patch.dict(RETRYABLE_TASKS, {"orders.tasks.send_message_task": MagicMock()}) as tasks:
-            self._post("retry_task_view", order_id="9001")
-            tasks["orders.tasks.send_message_task"].delay.assert_not_called()
-        self.assertEqual(Order.objects.get(order_id="9001").last_error, "")
 
     def test_retry_only_runs_known_tasks(self):
         self._failed(last_error_task="os.system")
@@ -692,7 +696,10 @@ class TestNoTelegramOutsideTheRestockDigests(SimpleTestCase):
         users = sorted(
             str(p.relative_to(root))
             for p in root.rglob("*.py")
-            if "telegram" in p.read_text().lower() and "tests" not in p.parts and "migrations" not in p.parts
+            if "telegram" in p.read_text().lower()
+            and "tests" not in p.parts
+            and "migrations" not in p.parts
+            and p.name != "test_settings.py"
         )
         # send_test_message is the manual "does the channel work" command; it refuses in test mode
         self.assertEqual(users, ["management/commands/send_test_message.py", "services/telegram.py", "tasks.py"])

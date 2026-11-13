@@ -81,16 +81,16 @@
  [
   "find_elements",
   "xpath",
-  "//tbody/tr"
+  "//tbody/tr[.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]]"
  ],
  [
   "find_elements",
   "xpath",
-  "//tbody/tr"
+  "//tbody/tr[.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]]"
  ],
  [
   "find_element",
-  "xpath=//tbody/tr#0",
+  "xpath=//tbody/tr[.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]]#0",
   "xpath",
   ".//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
  ],
@@ -98,7 +98,7 @@
   "execute_script",
   "arguments[0].scrollIntoView({block:'center'});",
   [
-   "xpath=//tbody/tr#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+   "xpath=//tbody/tr[.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]]#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
   ]
  ],
  [
@@ -107,7 +107,7 @@
  ],
  [
   "click",
-  "xpath=//tbody/tr#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
+  "xpath=//tbody/tr[.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]]#0>xpath=.//button[.//*[local-name()=\"path\"][contains(@d,\"M3 17.25\")]]"
  ],
  [
   "find_element",

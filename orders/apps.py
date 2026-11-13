@@ -27,10 +27,6 @@ class OrdersConfig(AppConfig):
     # Opens the tunnel and registers its URLs in WebJoint. A failure no longer
     # takes the server down: it is logged and shown as a dashboard notice, because
     # without registered webhooks no new order will arrive.
-    #
-    # This is a WebJoint write that RESTOCK_TEST_MODE deliberately does NOT block:
-    # test mode still needs real orders to arrive. It only changes the webhook
-    # addresses, never an order or a customer (the exception is also in CLAUDE.md).
     def _start_tunnel_and_register_webhooks(self) -> None:
         import logging
 

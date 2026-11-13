@@ -4,8 +4,6 @@ import logging
 from typing import Any, Callable, Optional
 
 # imports from project
-from django.conf import settings
-
 # imports from django
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -278,9 +276,6 @@ def add_products_from_invoice(request: HttpRequest) -> HttpResponse:
         products = extract_products_from_invoice(invoice_file.read(), invoice_file.content_type)
     except InvoiceRejected as e:
         return _done(request, str(e))
-    # creating products writes to WebJoint, so it is off in test mode
-    if settings.RESTOCK_TEST_MODE:
-        return _done(request, "Test mode is on: the products were read but not created in WebJoint.")
     tasks.create_product_task.delay(products)
     return _done(request)
 

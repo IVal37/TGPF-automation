@@ -9,7 +9,7 @@ from anthropic import APIError
 from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, SimpleTestCase, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase
 
 from orders.models import Driver, Notice, Order
 from orders.services import dashboard
@@ -181,7 +181,6 @@ class TestInvoiceUpload(DashboardCase):
             follow=True,
         )
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_a_valid_invoice_is_read_and_products_are_queued(self):
         with patch("orders.views.extract_products_from_invoice", return_value=[{"product_name": "X"}]) as read, patch(
             "orders.tasks.create_product_task"
@@ -190,15 +189,6 @@ class TestInvoiceUpload(DashboardCase):
         self.assertEqual(response.status_code, 200)
         read.assert_called_once_with(b"%PDF fake", "application/pdf")
         create.delay.assert_called_once_with([{"product_name": "X"}])
-
-    @override_settings(RESTOCK_TEST_MODE=True)
-    def test_test_mode_reads_the_invoice_but_does_not_write_to_webjoint(self):
-        with patch("orders.views.extract_products_from_invoice", return_value=[{"product_name": "X"}]), patch(
-            "orders.tasks.create_product_task"
-        ) as create, self.assertLogs("orders.views", "WARNING"):
-            response = self._upload()
-        create.delay.assert_not_called()
-        self.assertContains(response, "Test mode is on")
 
     def test_no_file(self):
         with self.assertLogs("orders.views", "WARNING"):
@@ -274,7 +264,6 @@ class TestCustomerNames(SimpleTestCase):
         self.assertEqual(customer_label(""), "customer")
 
 
-@override_settings(RESTOCK_TEST_MODE=True)
 class TestScheduledWindowAtIntake(TestCase):
     """A customer's chosen delivery window is kept when it is no earlier than our estimate."""
 

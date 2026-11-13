@@ -30,9 +30,6 @@ python manage.py test orders --settings=orders.test_settings   # in-memory SQLit
 ruff check . && ruff format --check .
 ```
 
-`RESTOCK_TEST_MODE=true` stops every SMS and WebJoint write while still saving and showing orders; use it
-whenever you are trying things out.
-
 ## How it fits together
 
 ```

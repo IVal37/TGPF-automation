@@ -158,6 +158,14 @@ def save_failure_artifacts(driver, label: str, order_ref=None) -> None:
         logger.warning("%s: could not save failure artifacts: %s", label, e)
 
 
+def report_failure(driver, label: str, order_ref, exc: BaseException) -> None:
+    """Save a screenshot and the page source for a failed scraper step, and log the error. Used by
+    browser_session, and by a session that catches a step's failure itself to go on to the next."""
+    save_failure_artifacts(driver, label, order_ref)
+    where = f" (order {order_ref})" if order_ref else ""
+    logger.error("%s%s: failed at step '%s': %s", label, where, failed_step(exc), exc)
+
+
 # Launches Chrome for one scraper run and always quits it. If anything raises
 # inside the block, a screenshot and the page source are saved first (named for
 # the scraper and `order_ref`, never a phone number) and the error is logged and
@@ -177,9 +185,7 @@ def browser_session(
     try:
         yield driver, wait
     except Exception as exc:
-        save_failure_artifacts(driver, label, order_ref)
-        where = f" (order {order_ref})" if order_ref else ""
-        logger.error("%s%s: failed at step '%s': %s", label, where, failed_step(exc), exc)
+        report_failure(driver, label, order_ref, exc)
         raise
     finally:
         driver.quit()

@@ -1,22 +1,31 @@
 # imports from std lib
 import logging
-from typing import Dict, List
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
 
 # imports from third party
 from celery import Task, shared_task
+from django.conf import settings
 from django.db.models import Sum
 from django.utils import timezone
 
 # imports from project
 from orders.constants import PaymentType
 from orders.models import Order, OrderItem, OrderStatus
+from orders.services import restock
 from orders.services.customers import customer_label
 from orders.services.note import get_order_notes
 from orders.services.notices import add_notice
 from orders.services.pricing import adjusted_total, effective_total, round_money
 from orders.services.scrapers.errors import BeforeCommitError, describe, failed_step
 from orders.services.scrapers.talkroute import send_message
-from orders.services.scrapers.webjoint import create_product, dispatch_to_driver, fill_order_notes, pull_from_chiles
+from orders.services.scrapers.webjoint import (
+    create_product,
+    dispatch_to_driver,
+    fill_order_notes,
+    prepare_order,
+    pull_from_chiles,
+)
 from orders.services.scrapers.weedmaps import get_wm_payment_type
 from orders.services.telegram import send_telegram_message
 
@@ -114,38 +123,31 @@ def dispatch_to_driver_task(order_id: str) -> None:
     dispatch_to_driver(order_id)
 
 
-# pull the order's items from Chiles, then (for orders still Pending) dispatch
-# it to a driver, as one browser job so the two steps never interleave with
-# another order's. order_id is the WebJoint _id.
+# The scraper to re-run on its own for each step of prepare_order that failed before its commit
+_STEP_TASKS = {
+    "dispatch_to_driver": dispatch_to_driver_task,
+    "pull_from_chiles": pull_from_chiles_task,
+}
+
+
+# Dispatch the order to a driver (when `dispatch` is true, i.e. it is still Pending) and pull its
+# items from Chiles, as one browser job with ONE WebJoint login, so the two steps never interleave
+# with another order's. order_id is the WebJoint _id.
 #
-# A pull that fails must not stop the dispatch (the driver still needs the
-# order), and a retry must not repeat a step that already worked. So a step that
-# failed BEFORE its commit is handed to its own task, which retries by itself;
-# a step that failed after its commit is raised here (never retried). Either
-# way the dispatch is never run twice.
+# A step that fails must not stop the other (the driver still needs the order even if the pull
+# failed, and the pull is still worth doing if the dispatch did), and a retry must not repeat a
+# step that already worked. prepare_order catches each step's failure and returns it. One that
+# failed BEFORE its commit is handed to its own task, which retries by itself; one that failed
+# after its commit is raised here (never retried). Either way no step is run twice. A failed login
+# raises BeforeCommitError before any step starts, and the whole task is retried.
 @shared_task(base=OrderTask, action="Order prep (pull/dispatch)", order_key="webjoint_id")
 def prepare_order_task(order_id: str, dispatch: bool) -> None:
-    errors = []
-
-    try:
-        pull_from_chiles(order_id)
-    except Exception as e:
-        logger.exception("prepare_order (order %s): pull_from_chiles failed; continuing", order_id)
-        errors.append((pull_from_chiles_task, e))
-
-    if dispatch:
-        try:
-            dispatch_to_driver(order_id)
-        except Exception as e:
-            logger.exception("prepare_order (order %s): dispatch_to_driver failed", order_id)
-            errors.append((dispatch_to_driver_task, e))
-
     after_commit = []
-    for task, exc in errors:
-        if isinstance(exc, BeforeCommitError):
-            task.delay(order_id)  # nothing happened yet, so this step can retry on its own
+    for failure in prepare_order(order_id, dispatch):
+        if isinstance(failure.error, BeforeCommitError):
+            _STEP_TASKS[failure.step].delay(order_id)  # nothing happened yet, so it can retry on its own
         else:
-            after_commit.append(exc)
+            after_commit.append(failure.error)
     if after_commit:
         raise after_commit[0]
 
@@ -215,11 +217,10 @@ RETRYABLE_TASKS = {
 }
 
 
-# builds the "product x qty" restock text for today's orders of one status:
-# storefront sales for the 3rd St digest, completed deliveries for the delivery
-# digest (cancelled and still-open orders are not sales). Queried straight from
-# the DB rather than any in-memory list, since these tasks run in a separate
-# Celery worker process from the Django web server.
+# builds the "product x qty" text of the 3rd St digest: today's storefront sales. (The delivery
+# digest is the dashboard's own Restock List, see restock.restock_message.) Queried straight from
+# the DB rather than any in-memory list, since these tasks run in a separate Celery worker
+# process from the Django web server.
 def _build_restock_message(status: str) -> str:
     today = timezone.now().date()
     rows = (
@@ -233,11 +234,47 @@ def _build_restock_message(status: str) -> str:
     return "\n".join(f"{row['product_name']} x{row['total_qty']}" for row in rows)
 
 
+# How late a scheduled digest may still go out. Celery beat fires a job it missed while it was off
+# the moment it starts, and a queued job waits for a worker that was down, so without this check
+# restarting the stack at 7am would post last night's digest. A digest is a closing-time summary:
+# late is fine, hours late is just noise.
+DIGEST_GRACE = timedelta(minutes=30)
+
+
+def _local_now() -> datetime:
+    """The current time in the project's time zone. With USE_TZ off (as it is here) Django's now()
+    is already local and naive, and localtime() refuses a naive value."""
+    return timezone.localtime() if settings.USE_TZ else timezone.now()
+
+
+def is_stale_digest(hour: int, minute: int = 0, now: Optional[datetime] = None) -> bool:
+    """True when a digest scheduled for hour:minute (local time) runs more than DIGEST_GRACE after
+    the latest such time, which means it is a catch-up and not its real run."""
+    now = now or _local_now()
+    due = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if due > now:
+        due -= timedelta(days=1)
+    return now - due > DIGEST_GRACE
+
+
+# `hour`/`minute` are the schedule's own time (set in CELERY_BEAT_SCHEDULE); a digest called by
+# hand, without them, always goes out.
+def _skip_stale(name: str, hour: Optional[int], minute: int) -> bool:
+    if hour is None or not is_stale_digest(hour, minute):
+        return False
+    logger.warning("skipped the %s: it was due at %02d:%02d and it is now %s", name, hour, minute, _local_now())
+    return True
+
+
 @shared_task
-def send_third_st_restock() -> None:
+def send_third_st_restock(hour: Optional[int] = None, minute: int = 0) -> None:
+    if _skip_stale("3rd St restock digest", hour, minute):
+        return
     send_telegram_message(_build_restock_message(OrderStatus.STOREFRONT))
 
 
 @shared_task
-def send_delivery_restock() -> None:
-    send_telegram_message(_build_restock_message(OrderStatus.COMPLETED))
+def send_delivery_restock(hour: Optional[int] = None, minute: int = 0) -> None:
+    if _skip_stale("delivery restock digest", hour, minute):
+        return
+    send_telegram_message(restock.restock_message())

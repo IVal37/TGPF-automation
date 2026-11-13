@@ -255,6 +255,7 @@ class ScraperTraceTests(SimpleTestCase):
             finally:
                 orders_logger.removeHandler(handler)
         trace.append(["return", result])
+        self.trace, self.result = trace, result
         self.assert_trace(name, trace)
 
     def assert_trace(self, name, trace):
@@ -349,7 +350,7 @@ class ScraperTraceTests(SimpleTestCase):
             webjoint._open_order(driver, WebDriverWait(driver, 10), "")
 
     def test_pull_from_chiles_available(self):
-        rows = "//tbody/tr"
+        rows = webjoint._ITEM_ROWS_XPATH
         dialog = '//div[@role="dialog"]'
 
         def qty(i):
@@ -381,7 +382,7 @@ class ScraperTraceTests(SimpleTestCase):
     def test_pull_from_chiles_kit_removal(self):
         dom = {
             **order_page(),
-            (By.XPATH, "//tbody/tr"): [spec("Item K\nStarting Shift Mobile Inventory")],
+            (By.XPATH, webjoint._ITEM_ROWS_XPATH): [spec("Item K\nStarting Shift Mobile Inventory")],
             (By.XPATH, '//*[@role="option" and contains(.,"@ Starting Shift Mobile Inventory")]'): [
                 spec("@ Starting Shift Mobile Inventory")
             ],
@@ -511,6 +512,70 @@ class ScraperTraceTests(SimpleTestCase):
         )
         self.assert_raised("BeforeCommitError", "assign driver")
 
+    def test_item_rows_are_only_the_rows_with_an_edit_button(self):
+        # `//tbody/tr` also matched the TAX, DELIVERY and driver-assignment rows, so after the items
+        # were pulled the scraper tried to "edit" the driver row and reported a false failure
+        self.assertIn(webjoint._EDIT_BUTTON_XPATH, webjoint._ITEM_ROWS_XPATH)
+        self.assertNotEqual(webjoint._ITEM_ROWS_XPATH, "//tbody/tr")
+        self.assertNotIn('"//tbody/tr"', Path(webjoint.__file__).read_text())
+
+    def _prepare_dom(self, extra=None):
+        return {
+            **order_page(),
+            (By.XPATH, webjoint._ITEM_ROWS_XPATH): [spec("Item B\nChiles Rd Shop")],
+            **(extra or {}),
+        }
+
+    def test_prepare_order_dispatches_then_pulls_in_one_login(self):
+        self.run_scenario(
+            "webjoint_prepare_order", lambda: webjoint.prepare_order(ORDER_ID, True), dom=self._prepare_dom()
+        )
+        self.assertEqual(self.result, [])
+        self.assertEqual(self.trace.count(["get", webjoint._WEBJOINT_URL]), 1)  # ONE login
+        flat = json.dumps(self.trace, default=str)
+        confirm = "/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]"
+        self.assertLess(
+            flat.index(confirm), flat.index(webjoint._ITEM_ROWS_XPATH.replace('"', '\\"'))
+        )  # dispatch first
+
+    def test_prepare_order_only_pulls_when_not_dispatching(self):
+        self.run_scenario(
+            "webjoint_prepare_order_pull_only", lambda: webjoint.prepare_order(ORDER_ID, False), dom=self._prepare_dom()
+        )
+        self.assertEqual(self.result, [])
+        self.assertNotIn("selectActionButton", json.dumps(self.trace, default=str))
+
+    def test_prepare_order_a_failed_dispatch_does_not_stop_the_pull(self):
+        confirm = "/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]"
+        self.run_scenario(
+            "webjoint_prepare_order_dispatch_fails_pull_still_runs",
+            lambda: webjoint.prepare_order(ORDER_ID, True),
+            dom=self._prepare_dom({(By.XPATH, confirm): MISSING}),
+        )
+        [failure] = self.result
+        self.assertEqual(
+            (failure.step, type(failure.error).__name__, failure.error.step),
+            ("dispatch_to_driver", "BeforeCommitError", "assign driver"),
+        )
+        self.assertIn(
+            webjoint._ITEM_ROWS_XPATH.replace('"', '\\"'), json.dumps(self.trace, default=str)
+        )  # the pull still ran
+        # the failed step keeps its failure capture, named for it, as it had in a session of its
+        # own (the fake browser writes no screenshot, but the page source is written for real)
+        self.assertEqual(
+            sorted(path.name for path in self.failure_dir.iterdir()),
+            [f"dispatch_to_driver-{ORDER_ID}-20260720-140000.html"],
+        )
+
+    def test_prepare_order_a_failed_login_raises_before_any_step(self):
+        self.run_scenario(
+            "webjoint_prepare_order_login_fails",
+            lambda: webjoint.prepare_order(ORDER_ID, True),
+            dom=self._prepare_dom({(By.CLASS_NAME, "c199.c13"): MISSING}),
+        )
+        self.assert_raised("BeforeCommitError", "login")
+        self.assertNotIn(f"orders/{ORDER_ID}/show", json.dumps(self.trace, default=str))  # no order was opened
+
     def test_dispatch_fails_at_the_confirm_click(self):
         confirm = "/html/body/div[5]/div[2]/div/div[2]/div[2]/button[1]/span[1]"
         self.run_scenario(
@@ -523,7 +588,7 @@ class ScraperTraceTests(SimpleTestCase):
     def test_pull_from_chiles_row_fails_before_any_save(self):
         dom = {
             **order_page(),
-            (By.XPATH, "//tbody/tr"): [spec("Item A\nStarting Shift Mobile Inventory")],
+            (By.XPATH, webjoint._ITEM_ROWS_XPATH): [spec("Item A\nStarting Shift Mobile Inventory")],
             (By.CSS_SELECTOR, "div.css-1j4kz5m"): MISSING,
         }
         self.run_scenario(
@@ -537,7 +602,7 @@ class ScraperTraceTests(SimpleTestCase):
         edit = './/button[.//*[local-name()="path"][contains(@d,"M3 17.25")]]'
         dom = {
             **order_page(),
-            (By.XPATH, "//tbody/tr"): [
+            (By.XPATH, webjoint._ITEM_ROWS_XPATH): [
                 spec("Item A\nStarting Shift Mobile Inventory"),
                 spec("Item B\nStarting Shift Mobile Inventory", dom={(By.XPATH, edit): MISSING}),
             ],

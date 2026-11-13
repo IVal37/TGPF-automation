@@ -6,20 +6,6 @@ from django.core.management.base import CommandError
 from django.test import SimpleTestCase, override_settings
 
 
-@override_settings(RESTOCK_TEST_MODE=True, TALKROUTE_TEST_PHONE="5305550100")
-class TestSendTestMessageInTestMode(SimpleTestCase):
-    def test_refuses_to_send_anything(self):
-        with patch("orders.services.scrapers.talkroute.send_message") as sms, patch(
-            "orders.services.telegram.send_telegram_message"
-        ) as telegram:
-            for flag in ("--sms", "--telegram"):
-                with self.assertRaises(CommandError):
-                    call_command("send_test_message", flag)
-        sms.assert_not_called()
-        telegram.assert_not_called()
-
-
-@override_settings(RESTOCK_TEST_MODE=False)
 class TestSendTestMessage(SimpleTestCase):
     @override_settings(TALKROUTE_TEST_PHONE="5305550100")
     def test_sms_texts_the_test_phone(self):

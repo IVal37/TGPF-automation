@@ -3,7 +3,7 @@ from decimal import Decimal
 from unittest.mock import ANY, patch
 
 from django.http import Http404
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import RequestFactory, TestCase
 
 from orders.models import Driver, Order
 from orders.services import dashboard, queries
@@ -40,7 +40,6 @@ class TestSendDispatchMsgView(TestCase):
             webjoint_id="1111-2222-4444444-9099",
         )
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_sends_message_with_edited_window_and_marks_the_order_sending(self):
         from orders.views import send_dispatch_msg_view
 
@@ -70,7 +69,6 @@ class TestSendDispatchMsgView(TestCase):
         self.assertEqual(self.order.eta_start, datetime(2026, 7, 20, 14, 45, 0))
         self.assertEqual(self.order.eta_end, datetime(2026, 7, 20, 15, 45, 0))
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_order_without_webjoint_id_is_texted_but_note_is_skipped(self):
         from orders.views import send_dispatch_msg_view
 
@@ -92,26 +90,6 @@ class TestSendDispatchMsgView(TestCase):
         mock_notes_task.delay.assert_not_called()
         self.assertTrue(any("9001" in line for line in logs.output))
 
-    @override_settings(RESTOCK_TEST_MODE=True)
-    def test_test_mode_marks_sent_without_texting(self):
-        from orders.views import send_dispatch_msg_view
-
-        with patch("orders.tasks.send_message_task") as mock_send_task:
-            request = self.factory.post(
-                "/send_dispatch_msg",
-                {
-                    "order_id": "9001",
-                    "eta_start": "14:30",
-                    "eta_end": "15:30",
-                },
-            )
-            send_dispatch_msg_view(as_dispatcher(request))
-
-        mock_send_task.delay.assert_not_called()
-        self.order.refresh_from_db()
-        self.assertEqual(self.order.status, Order.Status.SENT)
-
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_already_sent_order_is_not_resent(self):
         # guards against double-clicking Send and texting the customer twice
         from orders.views import send_dispatch_msg_view
@@ -154,7 +132,6 @@ class TestSendRescheduleMsgView(TestCase):
             webjoint_id="1111-2222-4444444-9098",
         )
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_sends_reschedule_and_marks_the_order_sending(self):
         from orders.views import send_reschedule_msg_view
 
@@ -202,7 +179,6 @@ class TestLinkOrderView(TestCase):
             webjoint_id="1111-2222-5555555-1002",
         )
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_links_companion_and_writes_note(self):
         from orders.views import link_order_view
 
@@ -375,7 +351,6 @@ class TestSendDispatchPaymentGate(TestCase):
         self.order.refresh_from_db()
         return response, send_task, notes_task
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_send_is_refused_while_payment_type_is_empty(self):
         with self.assertLogs("orders.views", "WARNING"):
             response, send_task, notes_task = self._send()
@@ -387,7 +362,6 @@ class TestSendDispatchPaymentGate(TestCase):
         # the ETA edit isn't applied either: nothing about a refused send sticks
         self.assertEqual(self.order.eta_start, datetime(2026, 7, 20, 14, 30, 0))
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_send_as_cash_sets_cash_and_sends(self):
         _, send_task, notes_task = self._send(as_cash="1")
         self.assertEqual(self.order.payment_type, "Cash")
@@ -396,7 +370,6 @@ class TestSendDispatchPaymentGate(TestCase):
         self.assertEqual(notes_task.delay.call_args.args[0], "1111-2222-3333333-9001")
         self.assertIn("WM says cash", notes_task.delay.call_args.args[1])
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_send_as_cash_is_refused_once_the_real_type_has_resolved(self):
         Order.objects.filter(order_id="9001").update(payment_type="Debit / Tap-to-pay")
         with self.assertLogs("orders.views", "WARNING"):
@@ -405,7 +378,6 @@ class TestSendDispatchPaymentGate(TestCase):
         self.assertEqual(self.order.payment_type, "Debit / Tap-to-pay")
         self.assertEqual(self.order.status, Order.Status.AWAITING_APPROVAL)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_plain_send_works_once_the_type_has_resolved(self):
         Order.objects.filter(order_id="9001").update(payment_type="Debit / Tap-to-pay")
         _, send_task, _ = self._send()
@@ -455,7 +427,6 @@ class TestAssignDriverView(DbTruthCase):
         self.assertEqual((order.driver_id, order.status), (self.driver.pk, Order.Status.SENT))
         self.assertIsNone(order.eta_start)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_no_text_customer_gets_notes_and_is_marked_sent_on_assignment(self):
         Order.objects.filter(order_id="u1").update(customer_name="Mohsen Awara", payment_type="Cash", webjoint_id=WJ_ID)
         with patch("orders.tasks.fill_order_notes_task") as notes, patch("orders.tasks.send_message_task") as send_task:
@@ -466,7 +437,6 @@ class TestAssignDriverView(DbTruthCase):
         send_task.delay.assert_not_called()
         self.assertEqual(Order.objects.get(order_id="u1").status, Order.Status.SENT)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_no_text_customer_still_awaiting_payment_defers_the_note_to_the_lookup(self):
         Order.objects.filter(order_id="u1").update(
             customer_name="Mohsen Awara", payment_type="", status=Order.Status.AWAITING_PAYMENT
@@ -477,14 +447,6 @@ class TestAssignDriverView(DbTruthCase):
             self._assign("u1", self.driver.pk)
         notes.delay.assert_not_called()
         resolve.delay.assert_called_once_with("u1", write_notes=True)
-
-    @override_settings(RESTOCK_TEST_MODE=True)
-    def test_test_mode_sends_and_writes_nothing(self):
-        Order.objects.filter(order_id="u1").update(customer_name="Mohsen Awara", payment_type="Cash")
-        with patch("orders.tasks.fill_order_notes_task") as notes:
-            self._assign("u1", self.driver.pk)
-        notes.delay.assert_not_called()
-        self.assertEqual(Order.objects.get(order_id="u1").status, Order.Status.AWAITING_APPROVAL)
 
 
 class TestQueueUsesStatus(TestCase):
@@ -522,16 +484,6 @@ class TestQueueUsesStatus(TestCase):
         with patch("orders.tasks.send_message_task") as send_task, self.assertRaises(Http404):
             send_dispatch_msg_view(as_dispatcher(request))
         send_task.delay.assert_not_called()
-
-    @override_settings(RESTOCK_TEST_MODE=True)
-    def test_send_marks_the_order_sent(self):
-        from orders.views import send_dispatch_msg_view
-
-        self._order("q1", Order.Status.AWAITING_APPROVAL)
-        request = RequestFactory().post("/send_dispatch_msg", {"order_id": "q1"})
-        send_dispatch_msg_view(as_dispatcher(request))
-        order = Order.objects.get(order_id="q1")
-        self.assertEqual(order.status, Order.Status.SENT)
 
     def test_unlink_puts_companion_back_in_the_queue(self):
         from orders.views import unlink_order_view

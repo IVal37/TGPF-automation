@@ -50,7 +50,7 @@ Scraper tests compare recorded browser action traces to golden files in orders/f
 
     UPDATE_TRACES=1 python manage.py test orders.tests.test_scrapers --settings=orders.test_settings
 
-Checking a channel works (both really send, and refuse to run while `RESTOCK_TEST_MODE=true`):
+Checking a channel works (both really send):
 
     python manage.py send_test_message --sms        # texts TALKROUTE_TEST_PHONE
     python manage.py send_test_message --telegram   # posts "testing" to the restock channel

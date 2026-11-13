@@ -5,7 +5,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.conf import settings
-from django.test import RequestFactory, TestCase, override_settings
+from django.test import RequestFactory, TestCase
 
 from orders.models import Order
 from orders.tests.helpers import POS_ORDER, SAMPLE_ORDER, WJ_ID, DbTruthCase
@@ -145,7 +145,6 @@ class TestNewOrderView(
     # Weedmaps orders (source "External") get their real payment type from a
     # background task; the webhook itself never opens a browser.
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_weedmaps_order_enqueues_payment_lookup_and_never_scrapes_inline(self):
         with patch("orders.services.scrapers.weedmaps.get_wm_payment_type") as scraper, patch(
             "orders.tasks.get_wm_payment_type"
@@ -158,34 +157,23 @@ class TestNewOrderView(
 
         self.assertFalse(hasattr(views, "get_wm_payment_type"))
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_weedmaps_order_is_saved_with_empty_payment_type_and_its_weedmaps_id(self):
         _, mocks = self._run()
         self.assertEqual(mocks["add_order"].call_args.kwargs["weedmaps_order_id"], "49018286")
         mocks["Order"].objects.filter.return_value.update.assert_any_call(payment_type="")
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_direct_order_keeps_its_webhook_payment_type_and_skips_lookup(self):
         _, mocks = self._run(payload=POS_ORDER)
         mocks["resolve_payment_type_task"].delay.assert_not_called()
         self.assertEqual(mocks["add_order"].call_args.kwargs["weedmaps_order_id"], "")
         mocks["Order"].objects.filter.return_value.update.assert_any_call(payment_type="Cash")
 
-    @override_settings(RESTOCK_TEST_MODE=True)
-    def test_test_mode_enqueues_nothing_and_keeps_webhook_payment_type(self):
-        _, mocks = self._run()
-        mocks["resolve_payment_type_task"].delay.assert_not_called()
-        mocks["prepare_order_task"].delay.assert_not_called()
-        mocks["Order"].objects.filter.return_value.update.assert_any_call(payment_type="Cash")
-
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_weedmaps_no_text_customer_gets_notes_after_payment_resolves(self):
         payload = dict(SAMPLE_ORDER, customer={**SAMPLE_ORDER["customer"], "name": "Mohsen Awara"})
         _, mocks = self._run(payload=payload)
         mocks["fill_order_notes_task"].delay.assert_not_called()
         mocks["resolve_payment_type_task"].delay.assert_called_once_with("6767008", write_notes=True)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_weedmaps_under_min_order_does_not_wait_for_payment_type(self):
         _, mocks = self._run(is_under_min={"return_value": True})
         mocks["fill_order_notes_task"].delay.assert_called_once_with(WJ_ID, "reached out about under min")
@@ -197,18 +185,15 @@ class TestNewOrderView(
     # right trigger condition, with the real function mocked out so no browser
     # ever launches and no real order/driver data is touched.
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_pending_status_dispatches_to_driver(self):
         payload = dict(SAMPLE_ORDER, status="Pending")
         _, mocks = self._run(payload=payload)
         mocks["prepare_order_task"].delay.assert_called_once_with(WJ_ID, True)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_non_pending_status_does_not_dispatch_to_driver(self):
         _, mocks = self._run()
         mocks["prepare_order_task"].delay.assert_called_once_with(WJ_ID, False)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_normal_path_pulls_from_chiles_but_defers_text_and_notes(self):
         # chiles pull / driver dispatch are unrelated to the ETA text, so they
         # still fire immediately; the SMS + WebJoint notes wait for a dispatcher
@@ -218,7 +203,6 @@ class TestNewOrderView(
         mocks["fill_order_notes_task"].delay.assert_not_called()
         mocks["send_message_task"].delay.assert_not_called()
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_under_min_order_sends_immediately(self):
         # under-minimum messages have no ETA window to review, so they keep
         # auto-sending exactly as before and never enter the dispatch queue
@@ -227,7 +211,6 @@ class TestNewOrderView(
         mocks["fill_order_notes_task"].delay.assert_called_once_with(WJ_ID, "reached out about under min")
         mocks["prepare_order_task"].delay.assert_called_once_with(WJ_ID, False)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_no_text_customer_skips_queue_but_writes_notes(self):
         # the hardcoded excluded customer never gets texted, so there's nothing
         # to hold for approval — notes get written immediately instead
@@ -240,7 +223,6 @@ class TestNewOrderView(
         _, mocks = self._run()
         self.assertEqual(mocks["add_order"].call_args.kwargs["webjoint_id"], WJ_ID)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_webhook_without_webjoint_id_skips_webjoint_tasks_but_still_texts(self):
         payload = {k: v for k, v in SAMPLE_ORDER.items() if k != "_id"}
         with self.assertLogs("orders.services.intake", "WARNING") as logs:
@@ -251,19 +233,16 @@ class TestNewOrderView(
         mocks["prepare_order_task"].delay.assert_not_called()
         self.assertTrue(any("6767008" in line for line in logs.output))
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_non_merchant_pay_customer_does_not_send_link(self):
         _, mocks = self._run()
         mocks["send_merchant_pay_link_task"].delay.assert_not_called()
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_merchant_pay_customer_sends_link(self):
         # "Imran Rahim" is one of the three hardcoded MERCHANT_PAY_CUSTOMERS
         payload = dict(POS_ORDER, customer={**POS_ORDER["customer"], "name": "Imran Rahim"})
         _, mocks = self._run(payload=payload)
         mocks["send_merchant_pay_link_task"].delay.assert_called_once_with("6767008")
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_merchant_pay_customer_under_min_does_not_send_link(self):
         # the merchant-pay-link SMS line only appears in the normal dispatch text,
         # never the under-min one, so the link itself shouldn't send either
@@ -309,7 +288,6 @@ class TestDuplicateWebhook(TestCase):
             order_id=order_id, customer_name="Hailey White", city="Davis", order_date=datetime(2026, 7, 20, 14, 0, 0)
         )
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_duplicate_creates_one_order_and_queues_nothing(self):
         self._existing("6767008")
         with self.assertLogs("orders.services.intake", "INFO") as logs:
@@ -320,7 +298,6 @@ class TestDuplicateWebhook(TestCase):
             self.assertFalse(mock.called or mock.delay.called, f"{name} ran for a duplicate")
         self.assertTrue(any("duplicate webhook" in line for line in logs.output))
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_duplicate_third_st_order_is_also_ignored(self):
         payload = dict(
             POS_ORDER,
@@ -331,7 +308,6 @@ class TestDuplicateWebhook(TestCase):
         self.assertEqual(response.status_code, 200)
         mocks["add_storefront_order"].assert_not_called()
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_a_new_order_id_is_not_treated_as_duplicate(self):
         self._existing("1")
         _, mocks = self._post(SAMPLE_ORDER)
@@ -350,12 +326,10 @@ class TestNewOrderStatus(
     def setUp(self):
         self.factory = RequestFactory()
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_weedmaps_order_starts_awaiting_payment(self):
         _, mocks = self._run()
         self.assertEqual(mocks["add_order"].call_args.kwargs["status"], Order.Status.AWAITING_PAYMENT)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_direct_order_starts_awaiting_approval(self):
         _, mocks = self._run(payload=POS_ORDER)
         self.assertEqual(mocks["add_order"].call_args.kwargs["status"], Order.Status.AWAITING_APPROVAL)
@@ -399,7 +373,6 @@ class TestNewOrderWithNoDriver(DbTruthCase):
             **extra,
         }
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_unassigned_order_is_saved_without_an_eta_and_skips_the_eta_estimate(self):
         with self.assertLogs("orders.services.engine", "WARNING"):
             response, mocks = self._post(self._payload())
@@ -411,7 +384,6 @@ class TestNewOrderWithNoDriver(DbTruthCase):
         # the WebJoint pull/dispatch does not depend on our driver
         mocks["prepare_order_task"].delay.assert_called_once_with(WJ_ID, False)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_under_min_unassigned_order_still_auto_sends(self):
         with self.assertLogs("orders.services.engine", "WARNING"):
             _, mocks = self._post(self._payload(subtotal=10, total=10))
@@ -421,7 +393,6 @@ class TestNewOrderWithNoDriver(DbTruthCase):
         # the text is queued; send_message_task moves it on to sent once it is out
         self.assertEqual((order.status, order.driver_id), (Order.Status.SENDING, None))
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_no_text_customer_is_left_for_assignment(self):
         payload = self._payload(customer={**POS_ORDER["customer"], "name": "Mohsen Awara"})
         with self.assertLogs("orders.services.engine", "WARNING"):
@@ -429,7 +400,6 @@ class TestNewOrderWithNoDriver(DbTruthCase):
         mocks["fill_order_notes_task"].delay.assert_not_called()
         self.assertEqual(Order.objects.get(order_id="7001").status, Order.Status.AWAITING_APPROVAL)
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_scheduled_window_is_stored_for_later(self):
         cart = {
             "deliveryTiming": "Scheduled",
@@ -442,7 +412,6 @@ class TestNewOrderWithNoDriver(DbTruthCase):
         self.assertIsNotNone(order.scheduled_start)
         self.assertEqual(order.scheduled_end - order.scheduled_start, timedelta(hours=1))
 
-    @override_settings(RESTOCK_TEST_MODE=False)
     def test_with_a_driver_on_shift_it_is_a_normal_assigned_order(self):
         self._driver("D1")
         _, mocks = self._post(self._payload())
