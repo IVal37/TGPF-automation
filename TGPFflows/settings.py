@@ -247,6 +247,10 @@ WEBJOINT_EMAIL = env_str("WEBJOINT_EMAIL")
 WEBJOINT_PASSWORD = env_str("WEBJOINT_PASSWORD")
 TALKROUTE_EMAIL = env_str("TALKROUTE_EMAIL")
 TALKROUTE_PASSWORD = env_str("TALKROUTE_PASSWORD")
+# Chrome profile folder the TalkRoute scraper keeps its login in, so it does not have to log in
+# (and pass Cloudflare's "verify you are human" check) every time. Set up by hand with
+# `manage.py talkroute_login`. It holds a live login, so it is gitignored.
+TALKROUTE_PROFILE_DIR = env_str("TALKROUTE_PROFILE_DIR") or str(BASE_DIR / ".browser_profiles" / "talkroute")
 # a phone number that is safe to text while trying things out (manage.py send_test_message)
 TALKROUTE_TEST_PHONE = env_str("TALKROUTE_TEST_PHONE")
 WEEDMAPS_EMAIL = env_str("WEEDMAPS_EMAIL")

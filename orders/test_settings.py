@@ -17,3 +17,6 @@ DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memor
 import tempfile  # noqa: E402
 
 FAILURE_DIR = os.path.join(tempfile.gettempdir(), "tgpf-test-failures")
+
+# a fixed path, so the golden scraper traces are the same on every machine (Chrome is faked)
+TALKROUTE_PROFILE_DIR = "/tmp/tgpf-test-profiles/talkroute"

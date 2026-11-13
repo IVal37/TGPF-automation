@@ -58,3 +58,16 @@ Checking a channel works (both really send, and refuse to run while `RESTOCK_TES
 Checking dependencies for known vulnerabilities (needs requirements-dev.txt):
 
     pip-audit -r requirements.txt --no-deps --disable-pip
+
+TalkRoute login (needed once, and again whenever the saved login expires):
+
+TalkRoute's login page asks for a Cloudflare "verify you are human" check, which the scraper cannot and should not
+pass. Instead you log in by hand once and the scraper reuses that login from a saved Chrome profile
+(`.browser_profiles/talkroute`, gitignored). Do this when texts start failing with a "compose message" error:
+
+    python manage.py talkroute_login
+
+A Chrome window opens on TalkRoute. Log in, tick the Cloudflare box if it appears, wait until you can see your
+messages, then **close the window** (closing it saves the login). A profile can only be used by one Chrome at a
+time, so run this when the browser worker is not in the middle of a job. Until the login is renewed, send the
+customer's text by hand in TalkRoute and press **Dismiss** on the order's card.

@@ -9,6 +9,10 @@
   }
  ],
  [
+  "set_page_load_timeout",
+  30
+ ],
+ [
   "get",
   "https://weedmaps.com/login?return_url=https://admin.weedmaps.com/orders"
  ],

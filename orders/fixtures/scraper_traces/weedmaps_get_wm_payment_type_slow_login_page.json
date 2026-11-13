@@ -1,0 +1,117 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {}
+  }
+ ],
+ [
+  "set_page_load_timeout",
+  30
+ ],
+ [
+  "get",
+  "https://weedmaps.com/login?return_url=https://admin.weedmaps.com/orders"
+ ],
+ [
+  "log",
+  "WARNING",
+  "get_wm_payment_type: the Weedmaps login page was still loading after 30s; trying the login anyway"
+ ],
+ [
+  "find_element",
+  "id",
+  "user_username"
+ ],
+ [
+  "clear",
+  "id=user_username"
+ ],
+ [
+  "send_keys",
+  "id=user_username",
+  [
+   "fake-weedmaps-email"
+  ]
+ ],
+ [
+  "find_element",
+  "id",
+  "user_password"
+ ],
+ [
+  "clear",
+  "id=user_password"
+ ],
+ [
+  "send_keys",
+  "id=user_password",
+  [
+   "fake-weedmaps-password"
+  ]
+ ],
+ [
+  "find_element",
+  "class name",
+  "btn.btn-signup-primary"
+ ],
+ [
+  "click",
+  "class name=btn.btn-signup-primary"
+ ],
+ [
+  "find_element",
+  "id",
+  "side-nav-orders-all-orders"
+ ],
+ [
+  "click",
+  "id=side-nav-orders-all-orders"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//a[starts-with(@href, \"/orders/\") and normalize-space(.)=\"#49018286\"]"
+ ],
+ [
+  "click",
+  "xpath=//a[starts-with(@href, \"/orders/\") and normalize-space(.)=\"#49018286\"]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//span[normalize-space(.)=\"Order #49018286\"]"
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//button[contains(., \"Confirm & start preparing\")]"
+ ],
+ [
+  "click",
+  "xpath=//button[contains(., \"Confirm & start preparing\")]"
+ ],
+ [
+  "sleep",
+  2
+ ],
+ [
+  "find_element",
+  "xpath",
+  "//*[@id=\"__next\"]/div/div[2]/div/div[3]/div[3]/div[1]/div[1]/div/div/div[4]/div[1]/p[1]"
+ ],
+ [
+  "sleep",
+  5
+ ],
+ [
+  "quit"
+ ],
+ [
+  "return",
+  "Debit / Tap-to-pay"
+ ]
+]

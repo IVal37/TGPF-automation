@@ -20,10 +20,10 @@ import tempfile
 from contextlib import ExitStack
 from datetime import datetime
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase, override_settings
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -149,6 +149,9 @@ class FakeChrome:
 
     def get(self, url):
         self.trace.append(["get", url])
+
+    def set_page_load_timeout(self, seconds):
+        self.trace.append(["set_page_load_timeout", seconds])
 
     def refresh(self):
         self.trace.append(["refresh"])
@@ -616,6 +619,83 @@ class ScraperTraceTests(SimpleTestCase):
             lambda: weedmaps.get_wm_payment_type(49018286),
             dom={(By.XPATH, field): [spec("Cashless")], **self._missing_wm_order()},
         )
+
+    def _wm_found_order_dom(self):
+        field = '//*[@id="__next"]/div/div[2]/div/div[3]/div[3]/div[1]/div[1]/div/div/div[4]/div[1]/p[1]'
+        header = '//span[normalize-space(.)="Order #49018286"]'
+        return {(By.XPATH, header): [spec("Order #49018286")], (By.XPATH, field): [spec("Cashless")]}
+
+    def test_weedmaps_login_page_that_never_finishes_loading_is_not_fatal(self):
+        # the page load times out but the form is usable: carry on and log in
+        def slow_get(chrome, url):
+            chrome.trace.append(["get", url])
+            raise TimeoutException("page load timed out")
+
+        self.run_scenario(
+            "weedmaps_get_wm_payment_type_slow_login_page",
+            lambda: weedmaps.get_wm_payment_type(49018286),
+            dom=self._wm_found_order_dom(),
+            extra_patches=[patch.object(FakeChrome, "get", slow_get)],
+        )
+        self.assertIsNone(self.raised)
+
+    def test_weedmaps_login_page_that_cannot_be_reached_is_retry_safe(self):
+        # nothing has happened yet, so this is a BeforeCommitError the task retries by itself
+        def unreachable_get(chrome, url):
+            chrome.trace.append(["get", url])
+            raise WebDriverException("net::ERR_INTERNET_DISCONNECTED")
+
+        self.run_scenario(
+            "weedmaps_get_wm_payment_type_login_page_unreachable",
+            lambda: weedmaps.get_wm_payment_type(49018286),
+            extra_patches=[patch.object(FakeChrome, "get", unreachable_get)],
+        )
+        self.assert_raised("BeforeCommitError", "open Weedmaps login page")
+
+    def test_weedmaps_tells_chrome_not_to_wait_for_every_resource(self):
+        session = MagicMock(wraps=weedmaps.browser_session)
+        self.run_scenario(
+            "weedmaps_get_wm_payment_type",
+            lambda: weedmaps.get_wm_payment_type(49018286),
+            dom=self._wm_found_order_dom(),
+            extra_patches=[patch.object(weedmaps, "browser_session", session)],
+        )
+        self.assertEqual(session.call_args.kwargs["page_load_strategy"], "eager")
+
+    def test_create_driver_uses_a_saved_profile_only_when_given_one(self):
+        with patch("selenium.webdriver.Chrome") as chrome:
+            browser.create_driver(user_data_dir="/profiles/talkroute")
+        self.assertIn("--user-data-dir=/profiles/talkroute", chrome.call_args.kwargs["options"].arguments)
+        with patch("selenium.webdriver.Chrome") as chrome:
+            browser.create_driver()
+        self.assertFalse([a for a in chrome.call_args.kwargs["options"].arguments if a.startswith("--user-data-dir")])
+
+    def test_create_driver_headless_can_be_overridden_either_way(self):
+        with override_settings(HEADLESS=True), patch("selenium.webdriver.Chrome") as chrome:
+            browser.create_driver()
+            self.assertIn("--headless=new", chrome.call_args.kwargs["options"].arguments)
+            browser.create_driver(headless=False)
+            self.assertNotIn("--headless=new", chrome.call_args.kwargs["options"].arguments)
+        with override_settings(HEADLESS=False), patch("selenium.webdriver.Chrome") as chrome:
+            browser.create_driver(headless=True)
+            self.assertIn("--headless=new", chrome.call_args.kwargs["options"].arguments)
+
+    def test_talkroute_uses_its_saved_profile(self):
+        session = MagicMock(wraps=talkroute.browser_session)
+        self.run_scenario(
+            "talkroute_send_message",
+            lambda: talkroute.send_message("5555550100", "hello"),
+            extra_patches=[patch.object(talkroute, "browser_session", session)],
+        )
+        self.assertEqual(session.call_args.kwargs["user_data_dir"], "/tmp/tgpf-test-profiles/talkroute")
+
+    def test_create_driver_waits_for_the_full_load_unless_told_otherwise(self):
+        with patch("selenium.webdriver.Chrome") as chrome:
+            browser.create_driver(page_load_strategy="eager")
+        self.assertEqual(chrome.call_args.kwargs["options"].page_load_strategy, "eager")
+        with patch("selenium.webdriver.Chrome") as chrome:
+            browser.create_driver()
+        self.assertEqual(chrome.call_args.kwargs["options"].page_load_strategy, "normal")
 
     @staticmethod
     def _missing_wm_order():

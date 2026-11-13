@@ -1,7 +1,7 @@
 """Input handling in the views: bad webhook bodies, refused dashboard actions, invoice uploads."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -285,8 +285,13 @@ class TestScheduledWindowAtIntake(TestCase):
 
         Driver.objects.create(name="D1", is_active=True, current_city="Davis")
 
+        # the order is placed at 1pm local time today, whatever time the tests run at: the ETA
+        # is clamped to opening hours (10:30) and "open orders" mean today's, so "now" would
+        # make this test pass or fail depending on the hour
+        placed = datetime.now().astimezone().replace(hour=13, minute=0, second=0, microsecond=0)
+
         def stamp(delta):
-            return (datetime.utcnow() + delta).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+            return (placed + delta).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
         cart = {"deliveryTiming": "Scheduled", "scheduledStart": stamp(start_in), "scheduledEnd": stamp(end_in)}
         body = dict(POS_ORDER, created=stamp(timedelta(0)), cart=cart, subtotal=500, total=500, discount=0)

@@ -3,6 +3,7 @@
   "chrome",
   {
    "arguments": [
+    "--user-data-dir=/tmp/tgpf-test-profiles/talkroute",
     "--window-size=1280,720"
    ],
    "prefs": {
@@ -114,11 +115,11 @@
  [
   "find_element",
   "xpath",
-  "//*[@id=\"root\"]/div/div/div[2]/div/div[1]/div/div[1]/div/div[1]/button"
+  "//button[@title='Compose New Conversation']"
  ],
  [
   "click",
-  "xpath=//*[@id=\"root\"]/div/div/div[2]/div/div[1]/div/div[1]/div/div[1]/button"
+  "xpath=//button[@title='Compose New Conversation']"
  ],
  [
   "find_element",

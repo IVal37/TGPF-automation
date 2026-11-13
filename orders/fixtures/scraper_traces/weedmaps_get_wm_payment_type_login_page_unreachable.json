@@ -1,0 +1,44 @@
+[
+ [
+  "chrome",
+  {
+   "arguments": [
+    "--window-size=1280,720"
+   ],
+   "prefs": {}
+  }
+ ],
+ [
+  "set_page_load_timeout",
+  30
+ ],
+ [
+  "get",
+  "https://weedmaps.com/login?return_url=https://admin.weedmaps.com/orders"
+ ],
+ [
+  "save_screenshot",
+  "get_wm_payment_type-wm49018286-20260720-140000.png"
+ ],
+ [
+  "page_source"
+ ],
+ [
+  "log",
+  "ERROR",
+  "get_wm_payment_type (order wm49018286): failed at step 'open Weedmaps login page': WebDriverException: Message: net::ERR_INTERNET_DISCONNECTED"
+ ],
+ [
+  "quit"
+ ],
+ [
+  "raised",
+  "BeforeCommitError",
+  "open Weedmaps login page",
+  "WebDriverException: Message: net::ERR_INTERNET_DISCONNECTED"
+ ],
+ [
+  "return",
+  null
+ ]
+]

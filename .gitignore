@@ -28,6 +28,9 @@ todo.md
 # Local spike findings (contain internal API details)
 notes/
 
+# Saved browser logins (the scrapers keep a live TalkRoute session here)
+.browser_profiles/
+
 # Editor and tool caches
 .vscode/
 .ruff_cache/

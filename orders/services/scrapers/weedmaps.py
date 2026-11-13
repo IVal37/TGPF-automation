@@ -6,7 +6,7 @@ import time
 from django.conf import settings
 
 # imports from selenium
-from selenium.common.exceptions import WebDriverException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
@@ -14,9 +14,19 @@ from selenium.webdriver.support.ui import WebDriverWait
 # imports from project
 from orders.constants import PaymentType
 from orders.services.scrapers.browser import browser_session, click, fill
-from orders.services.scrapers.errors import BeforeCommitError
+from orders.services.scrapers.errors import BeforeCommitError, before_commit
 
 logger = logging.getLogger(__name__)
+
+LOGIN_URL = "https://weedmaps.com/login?return_url=https://admin.weedmaps.com/orders"
+
+# Weedmaps' login page is slow and sometimes never fires its "finished loading" event: one
+# run sat on the first page load for 4 minutes (Selenium waits 120 s, then retries once)
+# while every other browser job queued behind it, even though the form was already usable.
+# "eager" returns once the page's structure is ready, and the timeout caps a page that
+# still stalls. The waits for each field below decide whether the page is usable.
+PAGE_LOAD_STRATEGY = "eager"
+PAGE_LOAD_TIMEOUT = 30  # seconds
 
 
 # weedmaps_order_id is the number Weedmaps shows as "#49018286"; WebJoint's
@@ -37,8 +47,14 @@ def get_wm_payment_type(weedmaps_order_id: str) -> str:
         return regularize_type(payment_type)
 
     failure = None
-    with browser_session("get_wm_payment_type", f"wm{weedmaps_order_id}") as (driver, wait):
-        driver.get("https://weedmaps.com/login?return_url=https://admin.weedmaps.com/orders")
+    with browser_session(
+        "get_wm_payment_type",
+        f"wm{weedmaps_order_id}",
+        page_load_strategy=PAGE_LOAD_STRATEGY,
+    ) as (driver, wait):
+        # read-only lookup: nothing can have happened yet, so any failure here is safe to retry
+        with before_commit("open Weedmaps login page"):
+            _open_login_page(driver)
 
         # intial login
         try:
@@ -107,6 +123,19 @@ def get_wm_payment_type(weedmaps_order_id: str) -> str:
             raise failure
 
     return regularize_type(payment_type)
+
+
+def _open_login_page(driver) -> None:
+    """Go to the login page. A page that is still loading after PAGE_LOAD_TIMEOUT is logged and
+    carried on with (the form is usually already there); any other failure is raised."""
+    driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
+    try:
+        driver.get(LOGIN_URL)
+    except TimeoutException:
+        logger.warning(
+            "get_wm_payment_type: the Weedmaps login page was still loading after %ds; trying the login anyway",
+            PAGE_LOAD_TIMEOUT,
+        )
 
 
 def regularize_type(wm_type: str) -> str:

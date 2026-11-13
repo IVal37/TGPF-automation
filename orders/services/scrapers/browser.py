@@ -4,6 +4,7 @@ import re
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Optional
 
 # imports from django
 from django.conf import settings
@@ -32,12 +33,26 @@ _LOWER = "abcdefghijklmnopqrstuvwxyz"
 
 # launches Chrome with the shared window size / headless setting every
 # scraper uses, plus any scraper-specific content-setting prefs
-def create_driver(prefs: dict = None):
+def create_driver(
+    prefs: dict = None,
+    page_load_strategy: Optional[str] = None,
+    user_data_dir: Optional[str] = None,
+    headless: Optional[bool] = None,
+):
+    """Launch Chrome with the shared window size / headless setting (`headless` overrides it).
+    `page_load_strategy` ("eager" or "none") makes navigation return before every last resource
+    has loaded; left unset Chrome waits for the full load event ("normal"). `user_data_dir` is a
+    Chrome profile folder: logins and cookies saved there survive between runs. Only one Chrome
+    can use a profile at a time."""
     opts = Options()
+    if user_data_dir:
+        opts.add_argument(f"--user-data-dir={user_data_dir}")
+    if page_load_strategy:
+        opts.page_load_strategy = page_load_strategy
     if prefs:
         opts.add_experimental_option("prefs", prefs)
     opts.add_argument("--window-size=1280,720")
-    if settings.HEADLESS:
+    if settings.HEADLESS if headless is None else headless:
         opts.add_argument("--headless=new")
     driver = webdriver.Chrome(options=opts)
     # React re-renders can invalidate an element mid-wait; retry instead of raising
@@ -148,9 +163,15 @@ def save_failure_artifacts(driver, label: str, order_ref=None) -> None:
 # the scraper and `order_ref`, never a phone number) and the error is logged and
 # re-raised for the task layer to classify.
 @contextmanager
-def browser_session(label: str, order_ref=None, prefs: dict = None):
+def browser_session(
+    label: str,
+    order_ref=None,
+    prefs: dict = None,
+    page_load_strategy: Optional[str] = None,
+    user_data_dir: Optional[str] = None,
+):
     try:
-        driver, wait = create_driver(prefs)
+        driver, wait = create_driver(prefs, page_load_strategy, user_data_dir)
     except Exception as e:
         raise BeforeCommitError("start browser", e) from e
     try:
